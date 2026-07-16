@@ -223,3 +223,13 @@ __marimo__/
 
 # IDE
 .idea/
+
+# node
+frontend/node_modules/
+frontend/dist/
+backend/node_modules/
+backend/dist/
+frontend/build/
+backend/build/
+frontend/.vite/
+backend/.vite/
