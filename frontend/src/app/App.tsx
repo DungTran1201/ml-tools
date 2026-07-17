@@ -2,15 +2,18 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "rea
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area, SparklineChart,
+  BarChart, Bar, Cell,
 } from "recharts";
 import {
   FlaskConical, Terminal, Play, Pause, Square, Settings,
   BarChart2, Zap, Server, HardDrive, Clock, RefreshCw,
   ChevronDown, ChevronUp, Search, SlidersHorizontal,
-  CheckCircle2, XCircle, Loader2, ChevronRight,
+  CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft,
   Layers, Download, Copy, ArrowUpDown, X, Filter,
   Star, GitFork, BookOpen, Cpu, Network,
   Thermometer, MemoryStick, Database, Activity,
+  Upload, FolderOpen, FileText, FileArchive, Image,
+  Table2, Eye, Trash2, UploadCloud, Package, AlertCircle, Info,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1962,6 +1965,619 @@ function DashboardView({ metrics, hw, termLines, isRunning, epoch, params, setPa
   );
 }
 
+// ─── Datasets view ────────────────────────────────────────────────────────────
+
+type DatasetCategory = "Image" | "Text" | "Tabular" | "Audio";
+
+interface PreloadedDataset {
+  id: string;
+  name: string;
+  category: DatasetCategory;
+  samples: number;
+  size: string;
+  format: string;
+  classes: number;
+  features: number;
+  splits: string[];
+  description: string;
+  classDistribution: { name: string; count: number }[];
+  schema: { column: string; dtype: string; nonNull: number; mean?: string; min?: string; max?: string }[];
+  sampleRows: Record<string, string | number>[];
+}
+
+const PRELOADED_DATASETS: PreloadedDataset[] = [
+  {
+    id: "imagenet", name: "ImageNet-1K", category: "Image", samples: 1281167, size: "138 GB", format: "JPEG", classes: 1000, features: 3, splits: ["train", "val"],
+    description: "Large-scale image classification benchmark with 1000 categories.",
+    classDistribution: [{name:"dog",count:1300},{name:"cat",count:1300},{name:"car",count:1300},{name:"bird",count:1300},{name:"fish",count:1300},{name:"flower",count:1281},{name:"insect",count:1281},{name:"food",count:1281}],
+    schema: [{column:"image",dtype:"PIL.Image",nonNull:1281167},{column:"label",dtype:"int64",nonNull:1281167,min:"0",max:"999"},{column:"width",dtype:"int32",nonNull:1281167,mean:"469",min:"75",max:"4288"}],
+    sampleRows: [{image:"n01440764_10026.JPEG",label:0,width:500,height:375},{image:"n01440764_10027.JPEG",label:0,width:640,height:480},{image:"n01443537_2.JPEG",label:1,width:320,height:240},{image:"n01443537_23.JPEG",label:1,width:480,height:360},{image:"n01484850_18.JPEG",label:2,width:512,height:384}],
+  },
+  {
+    id: "coco", name: "COCO 2017", category: "Image", samples: 118287, size: "18 GB", format: "JPEG", classes: 80, features: 5, splits: ["train", "val", "test"],
+    description: "Object detection, segmentation, and captioning dataset.",
+    classDistribution: [{name:"person",count:64115},{name:"car",count:12251},{name:"chair",count:9820},{name:"book",count:6332},{name:"bottle",count:5608},{name:"cup",count:4958},{name:"table",count:4510},{name:"truck",count:2312}],
+    schema: [{column:"image_id",dtype:"int64",nonNull:118287},{column:"file_name",dtype:"string",nonNull:118287},{column:"annotations",dtype:"list[dict]",nonNull:118287},{column:"width",dtype:"int32",nonNull:118287,mean:"580",min:"112",max:"640"},{column:"height",dtype:"int32",nonNull:118287,mean:"456",min:"100",max:"640"}],
+    sampleRows: [{image_id:139,file_name:"000000000139.jpg",num_annotations:4,width:640,height:426},{image_id:285,file_name:"000000000285.jpg",num_annotations:9,width:640,height:586},{image_id:632,file_name:"000000000632.jpg",num_annotations:2,width:640,height:480},{image_id:724,file_name:"000000000724.jpg",num_annotations:5,width:480,height:640},{image_id:776,file_name:"000000000776.jpg",num_annotations:1,width:640,height:427}],
+  },
+  {
+    id: "mnist", name: "MNIST", category: "Image", samples: 70000, size: "11 MB", format: "IDX", classes: 10, features: 1, splits: ["train", "test"],
+    description: "Handwritten digit recognition (28×28 grayscale images).",
+    classDistribution: [{name:"0",count:6903},{name:"1",count:7877},{name:"2",count:6990},{name:"3",count:7141},{name:"4",count:6824},{name:"5",count:6313},{name:"6",count:6876},{name:"7",count:7293},{name:"8",count:6825},{name:"9",count:6958}],
+    schema: [{column:"image",dtype:"uint8[28,28]",nonNull:70000},{column:"label",dtype:"int64",nonNull:70000,min:"0",max:"9"}],
+    sampleRows: [{idx:0,label:5,min_px:0,max_px:255,mean_px:35},{idx:1,label:0,min_px:0,max_px:253,mean_px:29},{idx:2,label:4,min_px:0,max_px:255,mean_px:51},{idx:3,label:1,min_px:0,max_px:255,mean_px:40},{idx:4,label:9,min_px:0,max_px:255,mean_px:44}],
+  },
+  {
+    id: "cifar10", name: "CIFAR-10", category: "Image", samples: 60000, size: "163 MB", format: "Binary", classes: 10, features: 1, splits: ["train", "test"],
+    description: "32×32 color images in 10 classes for object recognition.",
+    classDistribution: [{name:"airplane",count:6000},{name:"automobile",count:6000},{name:"bird",count:6000},{name:"cat",count:6000},{name:"deer",count:6000},{name:"dog",count:6000},{name:"frog",count:6000},{name:"horse",count:6000},{name:"ship",count:6000},{name:"truck",count:6000}],
+    schema: [{column:"image",dtype:"uint8[32,32,3]",nonNull:60000},{column:"label",dtype:"int64",nonNull:60000,min:"0",max:"9"}],
+    sampleRows: [{idx:0,label:"frog",r_mean:124,g_mean:108,b_mean:94},{idx:1,label:"truck",r_mean:181,g_mean:167,b_mean:160},{idx:2,label:"truck",r_mean:195,g_mean:179,b_mean:168},{idx:3,label:"deer",r_mean:102,g_mean:128,b_mean:88},{idx:4,label:"automobile",r_mean:156,g_mean:134,b_mean:126}],
+  },
+  {
+    id: "cifar100", name: "CIFAR-100", category: "Image", samples: 60000, size: "163 MB", format: "Binary", classes: 100, features: 1, splits: ["train", "test"],
+    description: "Fine-grained classification with 100 classes in 20 superclasses.",
+    classDistribution: [{name:"aquatic",count:3000},{name:"flowers",count:3000},{name:"food",count:3000},{name:"furniture",count:3000},{name:"insects",count:3000},{name:"mammals",count:3000},{name:"people",count:3000},{name:"vehicles",count:3000}],
+    schema: [{column:"image",dtype:"uint8[32,32,3]",nonNull:60000},{column:"fine_label",dtype:"int64",nonNull:60000,min:"0",max:"99"},{column:"coarse_label",dtype:"int64",nonNull:60000,min:"0",max:"19"}],
+    sampleRows: [{idx:0,fine_label:49,coarse_label:10},{idx:1,fine_label:33,coarse_label:7},{idx:2,fine_label:72,coarse_label:15},{idx:3,fine_label:51,coarse_label:10},{idx:4,fine_label:71,coarse_label:15}],
+  },
+  {
+    id: "oxfordpets", name: "Oxford Pets", category: "Image", samples: 7349, size: "774 MB", format: "JPEG", classes: 37, features: 3, splits: ["train", "test"],
+    description: "37 breeds of cats and dogs with pixel-level segmentation.",
+    classDistribution: [{name:"Abyssinian",count:199},{name:"Bengal",count:200},{name:"Birman",count:199},{name:"Bombay",count:200},{name:"Brit. SH",count:199},{name:"Egyptian",count:198},{name:"Persian",count:199},{name:"Siamese",count:200}],
+    schema: [{column:"image",dtype:"PIL.Image",nonNull:7349},{column:"label",dtype:"int64",nonNull:7349,min:"0",max:"36"},{column:"segmentation",dtype:"PIL.Image",nonNull:7349}],
+    sampleRows: [{file:"Abyssinian_100.jpg",label:0,breed:"Abyssinian",species:"cat"},{file:"Bengal_101.jpg",label:1,breed:"Bengal",species:"cat"},{file:"Birman_102.jpg",label:2,breed:"Birman",species:"cat"},{file:"Bombay_103.jpg",label:3,breed:"Bombay",species:"cat"},{file:"BritSH_104.jpg",label:4,breed:"British Shorthair",species:"cat"}],
+  },
+  {
+    id: "flowers", name: "Oxford Flowers 102", category: "Image", samples: 8189, size: "330 MB", format: "JPEG", classes: 102, features: 2, splits: ["train", "val", "test"],
+    description: "Fine-grained visual categorization of 102 flower categories.",
+    classDistribution: [{name:"daisy",count:80},{name:"dandelion",count:80},{name:"rose",count:80},{name:"sunflower",count:80},{name:"tulip",count:80},{name:"iris",count:80},{name:"lily",count:80},{name:"orchid",count:80}],
+    schema: [{column:"image",dtype:"PIL.Image",nonNull:8189},{column:"label",dtype:"int64",nonNull:8189,min:"0",max:"101"}],
+    sampleRows: [{file:"image_00001.jpg",label:0,category:"pink primrose"},{file:"image_00002.jpg",label:0,category:"pink primrose"},{file:"image_00003.jpg",label:1,category:"hard-leaved pocket orchid"},{file:"image_00004.jpg",label:1,category:"hard-leaved pocket orchid"},{file:"image_00005.jpg",label:2,category:"canterbury bells"}],
+  },
+  {
+    id: "pascalvoc", name: "Pascal VOC 2012", category: "Image", samples: 11540, size: "2 GB", format: "JPEG/XML", classes: 20, features: 4, splits: ["train", "val"],
+    description: "Object detection and segmentation with 20 object classes.",
+    classDistribution: [{name:"person",count:4528},{name:"car",count:1644},{name:"chair",count:1432},{name:"dog",count:1298},{name:"cat",count:1227},{name:"bird",count:1052},{name:"bottle",count:986},{name:"sofa",count:708}],
+    schema: [{column:"image",dtype:"PIL.Image",nonNull:11540},{column:"annotation",dtype:"XML",nonNull:11540},{column:"segmentation",dtype:"PIL.Image",nonNull:11540},{column:"class_set",dtype:"list[str]",nonNull:11540}],
+    sampleRows: [{file:"2007_000027.jpg",objects:1,classes:"person",width:486,height:500},{file:"2007_000032.jpg",objects:4,classes:"aeroplane",width:500,height:366},{file:"2007_000033.jpg",objects:2,classes:"aeroplane",width:500,height:375},{file:"2007_000039.jpg",objects:3,classes:"tvmonitor",width:500,height:375},{file:"2007_000042.jpg",objects:1,classes:"train",width:500,height:335}],
+  },
+  {
+    id: "commonvoice", name: "Common Voice", category: "Audio", samples: 1580000, size: "73 GB", format: "MP3", classes: 100, features: 6, splits: ["train", "dev", "test"],
+    description: "Open-source multilingual speech corpus for ASR training.",
+    classDistribution: [{name:"English",count:320000},{name:"German",count:210000},{name:"French",count:180000},{name:"Spanish",count:160000},{name:"Italian",count:120000},{name:"Japanese",count:85000},{name:"Chinese",count:75000},{name:"Other",count:430000}],
+    schema: [{column:"audio",dtype:"Audio",nonNull:1580000},{column:"sentence",dtype:"string",nonNull:1580000},{column:"locale",dtype:"string",nonNull:1580000},{column:"age",dtype:"string",nonNull:1420000},{column:"gender",dtype:"string",nonNull:1380000},{column:"duration_s",dtype:"float32",nonNull:1580000,mean:"5.2",min:"0.8",max:"30.0"}],
+    sampleRows: [{clip_id:"common_voice_en_100.mp3",sentence:"The quick brown fox",locale:"en",duration:4.2,gender:"male"},{clip_id:"common_voice_de_201.mp3",sentence:"Hallo Welt",locale:"de",duration:3.1,gender:"female"},{clip_id:"common_voice_fr_302.mp3",sentence:"Bonjour le monde",locale:"fr",duration:2.8,gender:"male"},{clip_id:"common_voice_es_403.mp3",sentence:"Hola mundo",locale:"es",duration:3.5,gender:"female"},{clip_id:"common_voice_it_504.mp3",sentence:"Ciao mondo",locale:"it",duration:2.9,gender:"male"}],
+  },
+  {
+    id: "agnews", name: "AG News", category: "Text", samples: 127600, size: "29 MB", format: "CSV", classes: 4, features: 3, splits: ["train", "test"],
+    description: "News articles classified into 4 topics: World, Sports, Business, Sci/Tech.",
+    classDistribution: [{name:"World",count:30000},{name:"Sports",count:30000},{name:"Business",count:30000},{name:"Sci/Tech",count:30000}],
+    schema: [{column:"label",dtype:"int64",nonNull:127600,min:"0",max:"3"},{column:"title",dtype:"string",nonNull:127600},{column:"description",dtype:"string",nonNull:127600}],
+    sampleRows: [{label:2,title:"Wall St. Bears Claw Back",description:"Reuters - Short-sellers...",length:128},{label:2,title:"Carlyle Looks Toward Growth",description:"Reuters - Private equity...",length:145},{label:3,title:"Oil and Economy Cloud",description:"AP - Stocks ended lower...",length:168},{label:3,title:"Iraq Coverage Dominated",description:"Reuters - The war in Iraq...",length:131},{label:0,title:"Peanut Allergy Treatment",description:"AP - A new treatment...",length:112}],
+  },
+  {
+    id: "iris", name: "Iris", category: "Tabular", samples: 150, size: "4 KB", format: "CSV", classes: 3, features: 4, splits: ["full"],
+    description: "Classic 3-class flower classification (setosa, versicolor, virginica).",
+    classDistribution: [{name:"setosa",count:50},{name:"versicolor",count:50},{name:"virginica",count:50}],
+    schema: [{column:"sepal_length",dtype:"float64",nonNull:150,mean:"5.84",min:"4.3",max:"7.9"},{column:"sepal_width",dtype:"float64",nonNull:150,mean:"3.05",min:"2.0",max:"4.4"},{column:"petal_length",dtype:"float64",nonNull:150,mean:"3.76",min:"1.0",max:"6.9"},{column:"petal_width",dtype:"float64",nonNull:150,mean:"1.20",min:"0.1",max:"2.5"}],
+    sampleRows: [{sepal_length:5.1,sepal_width:3.5,petal_length:1.4,petal_width:0.2,species:"setosa"},{sepal_length:4.9,sepal_width:3.0,petal_length:1.4,petal_width:0.2,species:"setosa"},{sepal_length:7.0,sepal_width:3.2,petal_length:4.7,petal_width:1.4,species:"versicolor"},{sepal_length:6.3,sepal_width:3.3,petal_length:6.0,petal_width:2.5,species:"virginica"},{sepal_length:5.8,sepal_width:2.7,petal_length:5.1,petal_width:1.9,species:"virginica"}],
+  },
+  {
+    id: "wine", name: "Wine Quality", category: "Tabular", samples: 6497, size: "258 KB", format: "CSV", classes: 7, features: 11, splits: ["train", "test"],
+    description: "Physicochemical properties of Portuguese wines with quality ratings.",
+    classDistribution: [{name:"Quality 3",count:30},{name:"Quality 4",count:216},{name:"Quality 5",count:2138},{name:"Quality 6",count:2836},{name:"Quality 7",count:1079},{name:"Quality 8",count:193},{name:"Quality 9",count:5}],
+    schema: [{column:"fixed_acidity",dtype:"float64",nonNull:6497,mean:"7.22",min:"3.8",max:"15.9"},{column:"volatile_acidity",dtype:"float64",nonNull:6497,mean:"0.34",min:"0.08",max:"1.58"},{column:"citric_acid",dtype:"float64",nonNull:6497,mean:"0.32",min:"0.0",max:"1.66"},{column:"residual_sugar",dtype:"float64",nonNull:6497,mean:"5.44",min:"0.6",max:"65.8"},{column:"alcohol",dtype:"float64",nonNull:6497,mean:"10.49",min:"8.0",max:"14.9"}],
+    sampleRows: [{fixed_acidity:7.4,volatile_acidity:0.7,citric_acid:0.0,residual_sugar:1.9,alcohol:9.4,quality:5},{fixed_acidity:7.8,volatile_acidity:0.88,citric_acid:0.0,residual_sugar:2.6,alcohol:9.8,quality:5},{fixed_acidity:7.8,volatile_acidity:0.76,citric_acid:0.04,residual_sugar:2.3,alcohol:9.8,quality:5},{fixed_acidity:6.7,volatile_acidity:0.58,citric_acid:0.08,residual_sugar:1.8,alcohol:9.5,quality:5},{fixed_acidity:5.6,volatile_acidity:0.615,citric_acid:0.0,residual_sugar:1.6,alcohol:9.8,quality:5}],
+  },
+];
+
+const CATEGORY_COLORS: Record<DatasetCategory, string> = { Image: "#7c6cf8", Text: "#3ba6ff", Tabular: "#f5a623", Audio: "#00d4a0" };
+const CATEGORY_ICONS: Record<DatasetCategory, React.ElementType> = { Image: Image, Text: FileText, Tabular: Table2, Audio: Activity };
+const ALL_CATEGORIES: DatasetCategory[] = ["Image", "Text", "Tabular", "Audio"];
+
+interface UploadFile {
+  id: string;
+  name: string;
+  size: number;
+  progress: number;
+  status: "uploading" | "validating" | "valid" | "error";
+}
+
+function fmtFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+function DatasetsView() {
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<DatasetCategory | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>("imagenet");
+  const [previewTab, setPreviewTab] = useState<"overview" | "schema" | "samples">("overview");
+  const [samplePage, setSamplePage] = useState(0);
+  const [uploads, setUploads] = useState<UploadFile[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadIdRef = useRef(0);
+
+  const filtered = useMemo(() => {
+    return PRELOADED_DATASETS.filter(d => {
+      if (categoryFilter && d.category !== categoryFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q) || d.format.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [search, categoryFilter]);
+
+  const selected = selectedId ? PRELOADED_DATASETS.find(d => d.id === selectedId) ?? null : null;
+
+  // Simulated upload progress
+  const simulateUpload = useCallback((file: File) => {
+    const id = `upload-${++uploadIdRef.current}`;
+    const entry: UploadFile = { id, name: file.name, size: file.size, progress: 0, status: "uploading" };
+    setUploads(prev => [...prev, entry]);
+
+    let p = 0;
+    const iv = setInterval(() => {
+      p += 8 + Math.random() * 12;
+      if (p >= 100) {
+        p = 100;
+        clearInterval(iv);
+        setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: 100, status: "validating" } : u));
+        setTimeout(() => {
+          const isValid = Math.random() > 0.2;
+          setUploads(prev => prev.map(u => u.id === id ? { ...u, status: isValid ? "valid" : "error" } : u));
+        }, 1200);
+      } else {
+        setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: Math.min(100, p) } : u));
+      }
+    }, 200);
+  }, []);
+
+  const handleFiles = useCallback((files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach(f => simulateUpload(f));
+  }, [simulateUpload]);
+
+  const removeUpload = (id: string) => setUploads(prev => prev.filter(u => u.id !== id));
+
+  const maxClassCount = selected ? Math.max(...selected.classDistribution.map(c => c.count)) : 0;
+
+  const CHART_PALETTE = ["#00d4a0", "#7c6cf8", "#3ba6ff", "#f5a623", "#f04040", "#e879f9", "#34d399", "#fb923c", "#60a5fa", "#a78bfa"];
+
+  return (
+    <div className="flex-1 min-w-0 flex flex-col h-full bg-background overflow-hidden">
+      {/* Page header */}
+      <div className="shrink-0 border-b border-border">
+        <div className="max-w-[1600px] mx-auto px-6 pt-6 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Database size={14} className="text-[#00d4a0]" strokeWidth={1.5} />
+                <h1 className="text-sm font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Datasets</h1>
+              </div>
+              <p className="text-[11px] text-[#525c70]" style={MONO}>
+                {PRELOADED_DATASETS.length} available · {uploads.filter(u => u.status === "valid").length} uploaded · {uploads.filter(u => u.status === "uploading").length} in progress
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-border text-[#525c70] hover:text-[#8891a8] hover:border-[rgba(255,255,255,0.15)] transition-colors" style={MONO}>
+                <Download size={10} /> Export
+              </button>
+            </div>
+          </div>
+
+          {/* Summary stat cards */}
+          <div className="grid grid-cols-4 gap-3 mt-5">
+            {[
+              { label: "Total Datasets", value: String(PRELOADED_DATASETS.length + uploads.filter(u => u.status === "valid").length), sub: "ready to use", color: "#00d4a0" },
+              { label: "Image Datasets", value: String(PRELOADED_DATASETS.filter(d => d.category === "Image").length), sub: `${fmtCount(PRELOADED_DATASETS.filter(d => d.category === "Image").reduce((s, d) => s + d.samples, 0))} samples`, color: "#7c6cf8" },
+              { label: "Total Samples", value: fmtCount(PRELOADED_DATASETS.reduce((s, d) => s + d.samples, 0)), sub: "across all datasets", color: "#3ba6ff" },
+              { label: "Uploads", value: String(uploads.length), sub: `${uploads.filter(u => u.status === "uploading").length} active`, color: "#f5a623" },
+            ].map(c => (
+              <div key={c.label} className="border border-border bg-card px-4 py-3">
+                <div className="text-[9px] uppercase tracking-widest text-[#525c70] mb-1.5" style={MONO}>{c.label}</div>
+                <div className="text-xl font-semibold" style={{ color: c.color, ...MONO }}>{c.value}</div>
+                <div className="text-[10px] text-[#525c70] mt-0.5 truncate" style={MONO}>{c.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 3-column body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+
+        {/* ── Left: Dataset Library ── */}
+        <div className="w-[220px] shrink-0 border-r border-border bg-[#0a0d14] flex flex-col">
+          {/* Search */}
+          <div className="p-3 border-b border-border">
+            <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5">
+              <Search size={11} className="text-[#525c70] shrink-0" />
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search datasets…"
+                className="bg-transparent outline-none text-[11px] text-[#d4dae8] placeholder-[#525c70] w-full"
+                style={MONO}
+              />
+              {search && <button onClick={() => setSearch("")}><X size={10} className="text-[#525c70] hover:text-[#8891a8]" /></button>}
+            </div>
+          </div>
+
+          {/* Category chips */}
+          <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1">
+            <button
+              onClick={() => setCategoryFilter(null)}
+              className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${
+                !categoryFilter
+                  ? "border-[#00d4a0]/40 text-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                  : "border-border text-[#525c70] hover:text-[#8891a8]"
+              }`}
+              style={MONO}
+            >All</button>
+            {ALL_CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
+                className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${
+                  categoryFilter === cat
+                    ? `border-[${CATEGORY_COLORS[cat]}]/40 text-[${CATEGORY_COLORS[cat]}] bg-[rgba(0,212,160,0.06)]`
+                    : "border-border text-[#525c70] hover:text-[#8891a8]"
+                }`}
+                style={{ ...(categoryFilter === cat ? { color: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat] + "66", backgroundColor: CATEGORY_COLORS[cat] + "0f" } : {}), ...MONO }}
+              >{cat}</button>
+            ))}
+          </div>
+
+          {/* Dataset list */}
+          <div className="flex-1 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <Search size={20} className="text-[#333d50] mx-auto mb-2" />
+                <div className="text-[10px] text-[#525c70]" style={MONO}>No datasets found</div>
+              </div>
+            ) : (
+              filtered.map(ds => {
+                const isActive = selectedId === ds.id;
+                const CatIcon = CATEGORY_ICONS[ds.category];
+                return (
+                  <button
+                    key={ds.id}
+                    onClick={() => { setSelectedId(ds.id); setPreviewTab("overview"); setSamplePage(0); }}
+                    className={`w-full text-left px-3 py-2.5 border-l-2 transition-all ${
+                      isActive
+                        ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                        : "border-transparent hover:bg-[rgba(255,255,255,0.02)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <CatIcon size={11} style={{ color: CATEGORY_COLORS[ds.category] }} strokeWidth={1.5} />
+                      <span className={`text-[11px] font-medium truncate ${isActive ? "text-[#d4dae8]" : "text-[#8891a8]"}`} style={MONO}>{ds.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-[19px]">
+                      <span className="text-[9px] text-[#525c70]" style={MONO}>{fmtCount(ds.samples)} samples</span>
+                      <span className="text-[9px] text-[#333d50]">·</span>
+                      <span className="text-[9px] text-[#525c70]" style={MONO}>{ds.size}</span>
+                      <span className="text-[9px] px-1 py-px border border-border text-[#525c70] ml-auto" style={MONO}>{ds.format}</span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── Center: Preview Panel ── */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {!selected ? (
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <Database size={32} className="text-[#1a2030] mb-3" />
+              <div className="text-[11px] text-[#525c70] mb-1" style={MONO}>Select a dataset to preview</div>
+              <div className="text-[10px] text-[#333d50]" style={MONO}>Choose from the library or upload your own</div>
+            </div>
+          ) : (
+            <>
+              {/* Preview header */}
+              <div className="shrink-0 border-b border-border px-5 pt-4 pb-3 bg-card">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-7 h-7 flex items-center justify-center border border-border" style={{ backgroundColor: CATEGORY_COLORS[selected.category] + "12" }}>
+                    {(() => { const CI = CATEGORY_ICONS[selected.category]; return <CI size={14} style={{ color: CATEGORY_COLORS[selected.category] }} />; })()}
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#d4dae8]" style={MONO}>{selected.name}</h2>
+                    <p className="text-[10px] text-[#525c70]" style={MONO}>{selected.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-5">
+                  <StatBadge label="Samples" value={fmtCount(selected.samples)} />
+                  <StatBadge label="Classes" value={selected.classes} color="#7c6cf8" />
+                  <StatBadge label="Features" value={selected.features} color="#3ba6ff" />
+                  <StatBadge label="Format" value={selected.format} color="#f5a623" />
+                  <StatBadge label="Size" value={selected.size} color="#8891a8" />
+                  <div className="flex items-center gap-1 ml-auto">
+                    {selected.splits.map(s => (
+                      <span key={s} className="text-[9px] px-1.5 py-0.5 border border-border text-[#525c70] uppercase tracking-widest" style={MONO}>{s}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="shrink-0 border-b border-border bg-[#0a0d14] flex items-center px-5">
+                {(["overview", "schema", "samples"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => { setPreviewTab(tab); setSamplePage(0); }}
+                    className={`px-4 py-2.5 text-[10px] uppercase tracking-widest border-b-2 transition-colors ${
+                      previewTab === tab
+                        ? "border-[#00d4a0] text-[#00d4a0]"
+                        : "border-transparent text-[#525c70] hover:text-[#8891a8]"
+                    }`}
+                    style={MONO}
+                  >{tab}</button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {previewTab === "overview" && (
+                  <div className="grid grid-cols-3 gap-4">
+                    {/* Class distribution chart */}
+                    <div className="col-span-2 border border-border bg-card p-4">
+                      <div className="text-[9px] uppercase tracking-widest text-[#525c70] mb-3" style={MONO}>Class Distribution</div>
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={selected.classDistribution} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                            <XAxis type="number" tick={{ fontSize: 9, fill: "#525c70", fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: "#8891a8", fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} width={80} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "#0d1017", border: "1px solid rgba(255,255,255,0.07)", fontSize: 11, fontFamily: "JetBrains Mono", color: "#d4dae8" }}
+                              cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                            />
+                            <Bar dataKey="count" radius={[0, 2, 2, 0]}>
+                              {selected.classDistribution.map((_, i) => (
+                                <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} fillOpacity={0.75} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Key stats */}
+                    <div className="space-y-3">
+                      {[
+                        { label: "Total Samples", value: fmtCount(selected.samples), icon: Package, color: "#00d4a0" },
+                        { label: "Classes", value: String(selected.classes), icon: Layers, color: "#7c6cf8" },
+                        { label: "Features", value: String(selected.features), icon: Table2, color: "#3ba6ff" },
+                        { label: "Splits", value: selected.splits.join(", "), icon: GitFork, color: "#f5a623" },
+                        { label: "Format", value: selected.format, icon: FileArchive, color: "#8891a8" },
+                        { label: "Disk Size", value: selected.size, icon: HardDrive, color: "#e879f9" },
+                      ].map(s => (
+                        <div key={s.label} className="border border-border bg-card px-4 py-3 flex items-center gap-3">
+                          <div className="w-7 h-7 flex items-center justify-center border border-border" style={{ backgroundColor: s.color + "10" }}>
+                            <s.icon size={13} style={{ color: s.color }} strokeWidth={1.5} />
+                          </div>
+                          <div>
+                            <div className="text-[9px] uppercase tracking-widest text-[#525c70]" style={MONO}>{s.label}</div>
+                            <div className="text-[12px] font-medium text-[#d4dae8]" style={MONO}>{s.value}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {previewTab === "schema" && (
+                  <div className="border border-border bg-card">
+                    <table className="w-full text-[11px]" style={MONO}>
+                      <thead>
+                        <tr className="border-b border-border bg-[#0a0d14]">
+                          <th className="text-left px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Column</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Type</th>
+                          <th className="text-right px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Non-Null</th>
+                          <th className="text-right px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Mean</th>
+                          <th className="text-right px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Min</th>
+                          <th className="text-right px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">Max</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selected.schema.map((col, i) => (
+                          <tr key={col.column} className={`border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors ${i % 2 === 0 ? "" : "bg-[rgba(255,255,255,0.01)]"}`}>
+                            <td className="px-4 py-2.5 text-[#d4dae8] font-medium">{col.column}</td>
+                            <td className="px-4 py-2.5"><span className="text-[10px] px-1.5 py-0.5 border border-border text-[#7c6cf8]">{col.dtype}</span></td>
+                            <td className="px-4 py-2.5 text-right text-[#8891a8]">{fmtCount(col.nonNull)}</td>
+                            <td className="px-4 py-2.5 text-right text-[#00d4a0]">{col.mean ?? "—"}</td>
+                            <td className="px-4 py-2.5 text-right text-[#525c70]">{col.min ?? "—"}</td>
+                            <td className="px-4 py-2.5 text-right text-[#525c70]">{col.max ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {previewTab === "samples" && (
+                  <div>
+                    <div className="border border-border bg-card overflow-x-auto">
+                      <table className="w-full text-[11px]" style={MONO}>
+                        <thead>
+                          <tr className="border-b border-border bg-[#0a0d14]">
+                            <th className="text-left px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">#</th>
+                            {Object.keys(selected.sampleRows[0] ?? {}).map(k => (
+                              <th key={k} className="text-left px-4 py-2.5 text-[9px] uppercase tracking-widest text-[#525c70]">{k}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selected.sampleRows.slice(samplePage * 5, samplePage * 5 + 5).map((row, i) => (
+                            <tr key={i} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                              <td className="px-4 py-2.5 text-[#525c70]">{samplePage * 5 + i}</td>
+                              {Object.values(row).map((v, j) => (
+                                <td key={j} className="px-4 py-2.5 text-[#d4dae8] truncate max-w-[200px]">{String(v)}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="text-[10px] text-[#525c70]" style={MONO}>
+                        Showing {samplePage * 5 + 1}–{Math.min(samplePage * 5 + 5, selected.sampleRows.length)} of {selected.sampleRows.length}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setSamplePage(p => Math.max(0, p - 1))}
+                          disabled={samplePage === 0}
+                          className="px-2 py-1 text-[10px] border border-border text-[#525c70] hover:text-[#8891a8] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          style={MONO}
+                        ><ChevronLeft size={10} /></button>
+                        <span className="text-[10px] text-[#525c70] px-2" style={MONO}>{samplePage + 1}</span>
+                        <button
+                          onClick={() => setSamplePage(p => p + 1)}
+                          disabled={samplePage * 5 + 5 >= selected.sampleRows.length}
+                          className="px-2 py-1 text-[10px] border border-border text-[#525c70] hover:text-[#8891a8] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          style={MONO}
+                        ><ChevronRight size={10} /></button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── Right: Upload Hub ── */}
+        <div className="w-[280px] shrink-0 border-l border-border bg-[#0a0d14] flex flex-col">
+          <div className="px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Upload size={12} className="text-[#00d4a0]" strokeWidth={1.5} />
+              <span className="text-[10px] uppercase tracking-widest text-[#d4dae8] font-medium" style={MONO}>Upload Hub</span>
+            </div>
+          </div>
+
+          {/* Drag-drop zone */}
+          <div className="p-3">
+            <div
+              className={`border-2 border-dashed rounded-sm p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+                dragOver
+                  ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                  : "border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.01)]"
+              }`}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <UploadCloud size={28} className={`mb-2 transition-colors ${dragOver ? "text-[#00d4a0]" : "text-[#333d50]"}`} strokeWidth={1.2} />
+              <div className="text-[11px] text-[#8891a8] mb-1" style={MONO}>Drag & drop files here</div>
+              <div className="text-[9px] text-[#525c70]" style={MONO}>or click to browse</div>
+              <div className="flex items-center gap-1.5 mt-3">
+                {[".csv", ".json", ".zip", ".parquet"].map(ext => (
+                  <span key={ext} className="text-[8px] px-1.5 py-0.5 border border-border text-[#525c70]" style={MONO}>{ext}</span>
+                ))}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                multiple
+                accept=".csv,.json,.zip,.parquet,.tsv,.txt"
+                onChange={e => handleFiles(e.target.files)}
+              />
+            </div>
+          </div>
+
+          {/* Browse folder button */}
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[10px] uppercase tracking-widest border border-border text-[#525c70] hover:text-[#8891a8] hover:border-[rgba(255,255,255,0.15)] transition-colors"
+              style={MONO}
+            >
+              <FolderOpen size={11} /> Browse Files
+            </button>
+          </div>
+
+          {/* Upload queue */}
+          <div className="flex-1 overflow-y-auto border-t border-border">
+            {uploads.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <Package size={20} className="text-[#1a2030] mx-auto mb-2" />
+                <div className="text-[10px] text-[#525c70]" style={MONO}>No uploads yet</div>
+                <div className="text-[9px] text-[#333d50] mt-0.5" style={MONO}>Files will appear here</div>
+              </div>
+            ) : (
+              uploads.map(file => {
+                const statusCfg = {
+                  uploading: { color: "#3ba6ff", bg: "rgba(59,166,255,0.08)", label: "Uploading" },
+                  validating: { color: "#f5a623", bg: "rgba(245,166,35,0.08)", label: "Validating" },
+                  valid: { color: "#00d4a0", bg: "rgba(0,212,160,0.08)", label: "Valid" },
+                  error: { color: "#f04040", bg: "rgba(240,64,64,0.08)", label: "Error" },
+                }[file.status];
+
+                const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+                const FileIcon = ext === "json" ? FileText : ext === "zip" ? FileArchive : ext === "csv" || ext === "tsv" ? Table2 : FileText;
+
+                return (
+                  <div key={file.id} className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <FileIcon size={12} style={{ color: statusCfg.color }} strokeWidth={1.5} />
+                      <span className="text-[11px] text-[#d4dae8] truncate flex-1" style={MONO}>{file.name}</span>
+                      <button onClick={() => removeUpload(file.id)} className="text-[#333d50] hover:text-[#f04040] transition-colors">
+                        <X size={10} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[9px] text-[#525c70]" style={MONO}>{fmtFileSize(file.size)}</span>
+                      <span className="text-[9px] text-[#333d50]">·</span>
+                      <span
+                        className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest px-1 py-px"
+                        style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, border: `1px solid ${statusCfg.color}28`, ...MONO }}
+                      >
+                        {file.status === "uploading" && <Loader2 size={8} className="animate-spin" />}
+                        {file.status === "validating" && <Loader2 size={8} className="animate-spin" />}
+                        {file.status === "valid" && <CheckCircle2 size={8} />}
+                        {file.status === "error" && <AlertCircle size={8} />}
+                        {statusCfg.label}
+                      </span>
+                    </div>
+                    {/* Progress bar */}
+                    {(file.status === "uploading" || file.status === "validating") && (
+                      <div className="h-[3px] bg-[#131825] w-full relative mt-1">
+                        <div
+                          className="h-full absolute top-0 left-0 transition-all duration-300"
+                          style={{
+                            width: `${file.progress}%`,
+                            backgroundColor: file.status === "validating" ? "#f5a623" : "#3ba6ff",
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
@@ -1975,7 +2591,7 @@ const NAV_ITEMS = [
 ];
 
 export default function App() {
-  const [activeNav, setActiveNav] = useState("hardware");
+  const [activeNav, setActiveNav] = useState("datasets");
   const [isRunning, setIsRunning] = useState(true);
   const [metrics, setMetrics] = useState<MetricPoint[]>(() => generateMetrics(47));
   const [hw, setHw] = useState<HardwarePoint[]>(() => generateHardware(60));
@@ -2093,6 +2709,8 @@ export default function App() {
           <ModelsView />
         ) : activeNav === "hardware" ? (
           <HardwareView liveHw={hw} />
+        ) : activeNav === "datasets" ? (
+          <DatasetsView />
         ) : (
           <DashboardView
             metrics={metrics} hw={hw} termLines={termLines}
