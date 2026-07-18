@@ -1,0 +1,65 @@
+{
+  "name": "ML Tools - Full Stack Dev",
+  "image": "mcr.microsoft.com/devcontainers/universal:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/node:latest": {},
+    "ghcr.io/devcontainers/features/python:latest": {}
+  },
+  "ports": [
+    {
+      "label": "Frontend (Vite)",
+      "onAutoForward": "notify",
+      "port": 5173
+    },
+    {
+      "label": "Backend API",
+      "onAutoForward": "notify",
+      "port": 5000
+    },
+    {
+      "label": "Database",
+      "onAutoForward": "notify",
+      "port": 5432
+    }
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.makefile-tools",
+        "GitHub.copilot"
+      ],
+      "settings": {
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.python",
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteUser": "codespace",
+  "forwardPorts": [5173, 5000, 5432],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend",
+      "onAutoForward": "notify"
+    },
+    "5000": {
+      "label": "Backend",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "Database",
+      "onAutoForward": "notify"
+    }
+  }
+}
