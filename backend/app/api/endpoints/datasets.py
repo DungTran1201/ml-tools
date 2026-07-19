@@ -22,6 +22,16 @@ def list_datasets(
     datasets = dataset_service.get_all_datasets(db, context["project_id"])
     return datasets
 
+@router.get("/uploads", response_model=List[UploadFileSchema])
+def list_recent_uploads(
+    db: Session = Depends(get_db),
+    context: dict = Depends(get_current_context)
+):
+    """
+    Restore active/recent uploads on page refresh.
+    """
+    return dataset_service.get_recent_uploads(db, context["project_id"])
+
 @router.get("/{dataset_id}", response_model=PreloadedDataset)
 def get_dataset(
     dataset_id: str, 
@@ -49,9 +59,11 @@ def export_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
         
+    dataset_model = PreloadedDataset(**dataset)
     filename = f"dataset_{dataset.get('id', dataset_id)}_metadata.json"
+    
     return JSONResponse(
-        content=dataset,
+        content=dataset_model.model_dump(by_alias=True),
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 

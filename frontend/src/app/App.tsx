@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area, SparklineChart,
@@ -1989,86 +1990,86 @@ const PRELOADED_DATASETS: PreloadedDataset[] = [
   {
     id: "imagenet", name: "ImageNet-1K", category: "Image", samples: 1281167, size: "138 GB", format: "JPEG", classes: 1000, features: 3, splits: ["train", "val"],
     description: "Large-scale image classification benchmark with 1000 categories.",
-    classDistribution: [{name:"dog",count:1300},{name:"cat",count:1300},{name:"car",count:1300},{name:"bird",count:1300},{name:"fish",count:1300},{name:"flower",count:1281},{name:"insect",count:1281},{name:"food",count:1281}],
-    schema: [{column:"image",dtype:"PIL.Image",nonNull:1281167},{column:"label",dtype:"int64",nonNull:1281167,min:"0",max:"999"},{column:"width",dtype:"int32",nonNull:1281167,mean:"469",min:"75",max:"4288"}],
-    sampleRows: [{image:"n01440764_10026.JPEG",label:0,width:500,height:375},{image:"n01440764_10027.JPEG",label:0,width:640,height:480},{image:"n01443537_2.JPEG",label:1,width:320,height:240},{image:"n01443537_23.JPEG",label:1,width:480,height:360},{image:"n01484850_18.JPEG",label:2,width:512,height:384}],
+    classDistribution: [{ name: "dog", count: 1300 }, { name: "cat", count: 1300 }, { name: "car", count: 1300 }, { name: "bird", count: 1300 }, { name: "fish", count: 1300 }, { name: "flower", count: 1281 }, { name: "insect", count: 1281 }, { name: "food", count: 1281 }],
+    schema: [{ column: "image", dtype: "PIL.Image", nonNull: 1281167 }, { column: "label", dtype: "int64", nonNull: 1281167, min: "0", max: "999" }, { column: "width", dtype: "int32", nonNull: 1281167, mean: "469", min: "75", max: "4288" }],
+    sampleRows: [{ image: "n01440764_10026.JPEG", label: 0, width: 500, height: 375 }, { image: "n01440764_10027.JPEG", label: 0, width: 640, height: 480 }, { image: "n01443537_2.JPEG", label: 1, width: 320, height: 240 }, { image: "n01443537_23.JPEG", label: 1, width: 480, height: 360 }, { image: "n01484850_18.JPEG", label: 2, width: 512, height: 384 }],
   },
   {
     id: "coco", name: "COCO 2017", category: "Image", samples: 118287, size: "18 GB", format: "JPEG", classes: 80, features: 5, splits: ["train", "val", "test"],
     description: "Object detection, segmentation, and captioning dataset.",
-    classDistribution: [{name:"person",count:64115},{name:"car",count:12251},{name:"chair",count:9820},{name:"book",count:6332},{name:"bottle",count:5608},{name:"cup",count:4958},{name:"table",count:4510},{name:"truck",count:2312}],
-    schema: [{column:"image_id",dtype:"int64",nonNull:118287},{column:"file_name",dtype:"string",nonNull:118287},{column:"annotations",dtype:"list[dict]",nonNull:118287},{column:"width",dtype:"int32",nonNull:118287,mean:"580",min:"112",max:"640"},{column:"height",dtype:"int32",nonNull:118287,mean:"456",min:"100",max:"640"}],
-    sampleRows: [{image_id:139,file_name:"000000000139.jpg",num_annotations:4,width:640,height:426},{image_id:285,file_name:"000000000285.jpg",num_annotations:9,width:640,height:586},{image_id:632,file_name:"000000000632.jpg",num_annotations:2,width:640,height:480},{image_id:724,file_name:"000000000724.jpg",num_annotations:5,width:480,height:640},{image_id:776,file_name:"000000000776.jpg",num_annotations:1,width:640,height:427}],
+    classDistribution: [{ name: "person", count: 64115 }, { name: "car", count: 12251 }, { name: "chair", count: 9820 }, { name: "book", count: 6332 }, { name: "bottle", count: 5608 }, { name: "cup", count: 4958 }, { name: "table", count: 4510 }, { name: "truck", count: 2312 }],
+    schema: [{ column: "image_id", dtype: "int64", nonNull: 118287 }, { column: "file_name", dtype: "string", nonNull: 118287 }, { column: "annotations", dtype: "list[dict]", nonNull: 118287 }, { column: "width", dtype: "int32", nonNull: 118287, mean: "580", min: "112", max: "640" }, { column: "height", dtype: "int32", nonNull: 118287, mean: "456", min: "100", max: "640" }],
+    sampleRows: [{ image_id: 139, file_name: "000000000139.jpg", num_annotations: 4, width: 640, height: 426 }, { image_id: 285, file_name: "000000000285.jpg", num_annotations: 9, width: 640, height: 586 }, { image_id: 632, file_name: "000000000632.jpg", num_annotations: 2, width: 640, height: 480 }, { image_id: 724, file_name: "000000000724.jpg", num_annotations: 5, width: 480, height: 640 }, { image_id: 776, file_name: "000000000776.jpg", num_annotations: 1, width: 640, height: 427 }],
   },
   {
     id: "mnist", name: "MNIST", category: "Image", samples: 70000, size: "11 MB", format: "IDX", classes: 10, features: 1, splits: ["train", "test"],
     description: "Handwritten digit recognition (28×28 grayscale images).",
-    classDistribution: [{name:"0",count:6903},{name:"1",count:7877},{name:"2",count:6990},{name:"3",count:7141},{name:"4",count:6824},{name:"5",count:6313},{name:"6",count:6876},{name:"7",count:7293},{name:"8",count:6825},{name:"9",count:6958}],
-    schema: [{column:"image",dtype:"uint8[28,28]",nonNull:70000},{column:"label",dtype:"int64",nonNull:70000,min:"0",max:"9"}],
-    sampleRows: [{idx:0,label:5,min_px:0,max_px:255,mean_px:35},{idx:1,label:0,min_px:0,max_px:253,mean_px:29},{idx:2,label:4,min_px:0,max_px:255,mean_px:51},{idx:3,label:1,min_px:0,max_px:255,mean_px:40},{idx:4,label:9,min_px:0,max_px:255,mean_px:44}],
+    classDistribution: [{ name: "0", count: 6903 }, { name: "1", count: 7877 }, { name: "2", count: 6990 }, { name: "3", count: 7141 }, { name: "4", count: 6824 }, { name: "5", count: 6313 }, { name: "6", count: 6876 }, { name: "7", count: 7293 }, { name: "8", count: 6825 }, { name: "9", count: 6958 }],
+    schema: [{ column: "image", dtype: "uint8[28,28]", nonNull: 70000 }, { column: "label", dtype: "int64", nonNull: 70000, min: "0", max: "9" }],
+    sampleRows: [{ idx: 0, label: 5, min_px: 0, max_px: 255, mean_px: 35 }, { idx: 1, label: 0, min_px: 0, max_px: 253, mean_px: 29 }, { idx: 2, label: 4, min_px: 0, max_px: 255, mean_px: 51 }, { idx: 3, label: 1, min_px: 0, max_px: 255, mean_px: 40 }, { idx: 4, label: 9, min_px: 0, max_px: 255, mean_px: 44 }],
   },
   {
     id: "cifar10", name: "CIFAR-10", category: "Image", samples: 60000, size: "163 MB", format: "Binary", classes: 10, features: 1, splits: ["train", "test"],
     description: "32×32 color images in 10 classes for object recognition.",
-    classDistribution: [{name:"airplane",count:6000},{name:"automobile",count:6000},{name:"bird",count:6000},{name:"cat",count:6000},{name:"deer",count:6000},{name:"dog",count:6000},{name:"frog",count:6000},{name:"horse",count:6000},{name:"ship",count:6000},{name:"truck",count:6000}],
-    schema: [{column:"image",dtype:"uint8[32,32,3]",nonNull:60000},{column:"label",dtype:"int64",nonNull:60000,min:"0",max:"9"}],
-    sampleRows: [{idx:0,label:"frog",r_mean:124,g_mean:108,b_mean:94},{idx:1,label:"truck",r_mean:181,g_mean:167,b_mean:160},{idx:2,label:"truck",r_mean:195,g_mean:179,b_mean:168},{idx:3,label:"deer",r_mean:102,g_mean:128,b_mean:88},{idx:4,label:"automobile",r_mean:156,g_mean:134,b_mean:126}],
+    classDistribution: [{ name: "airplane", count: 6000 }, { name: "automobile", count: 6000 }, { name: "bird", count: 6000 }, { name: "cat", count: 6000 }, { name: "deer", count: 6000 }, { name: "dog", count: 6000 }, { name: "frog", count: 6000 }, { name: "horse", count: 6000 }, { name: "ship", count: 6000 }, { name: "truck", count: 6000 }],
+    schema: [{ column: "image", dtype: "uint8[32,32,3]", nonNull: 60000 }, { column: "label", dtype: "int64", nonNull: 60000, min: "0", max: "9" }],
+    sampleRows: [{ idx: 0, label: "frog", r_mean: 124, g_mean: 108, b_mean: 94 }, { idx: 1, label: "truck", r_mean: 181, g_mean: 167, b_mean: 160 }, { idx: 2, label: "truck", r_mean: 195, g_mean: 179, b_mean: 168 }, { idx: 3, label: "deer", r_mean: 102, g_mean: 128, b_mean: 88 }, { idx: 4, label: "automobile", r_mean: 156, g_mean: 134, b_mean: 126 }],
   },
   {
     id: "cifar100", name: "CIFAR-100", category: "Image", samples: 60000, size: "163 MB", format: "Binary", classes: 100, features: 1, splits: ["train", "test"],
     description: "Fine-grained classification with 100 classes in 20 superclasses.",
-    classDistribution: [{name:"aquatic",count:3000},{name:"flowers",count:3000},{name:"food",count:3000},{name:"furniture",count:3000},{name:"insects",count:3000},{name:"mammals",count:3000},{name:"people",count:3000},{name:"vehicles",count:3000}],
-    schema: [{column:"image",dtype:"uint8[32,32,3]",nonNull:60000},{column:"fine_label",dtype:"int64",nonNull:60000,min:"0",max:"99"},{column:"coarse_label",dtype:"int64",nonNull:60000,min:"0",max:"19"}],
-    sampleRows: [{idx:0,fine_label:49,coarse_label:10},{idx:1,fine_label:33,coarse_label:7},{idx:2,fine_label:72,coarse_label:15},{idx:3,fine_label:51,coarse_label:10},{idx:4,fine_label:71,coarse_label:15}],
+    classDistribution: [{ name: "aquatic", count: 3000 }, { name: "flowers", count: 3000 }, { name: "food", count: 3000 }, { name: "furniture", count: 3000 }, { name: "insects", count: 3000 }, { name: "mammals", count: 3000 }, { name: "people", count: 3000 }, { name: "vehicles", count: 3000 }],
+    schema: [{ column: "image", dtype: "uint8[32,32,3]", nonNull: 60000 }, { column: "fine_label", dtype: "int64", nonNull: 60000, min: "0", max: "99" }, { column: "coarse_label", dtype: "int64", nonNull: 60000, min: "0", max: "19" }],
+    sampleRows: [{ idx: 0, fine_label: 49, coarse_label: 10 }, { idx: 1, fine_label: 33, coarse_label: 7 }, { idx: 2, fine_label: 72, coarse_label: 15 }, { idx: 3, fine_label: 51, coarse_label: 10 }, { idx: 4, fine_label: 71, coarse_label: 15 }],
   },
   {
     id: "oxfordpets", name: "Oxford Pets", category: "Image", samples: 7349, size: "774 MB", format: "JPEG", classes: 37, features: 3, splits: ["train", "test"],
     description: "37 breeds of cats and dogs with pixel-level segmentation.",
-    classDistribution: [{name:"Abyssinian",count:199},{name:"Bengal",count:200},{name:"Birman",count:199},{name:"Bombay",count:200},{name:"Brit. SH",count:199},{name:"Egyptian",count:198},{name:"Persian",count:199},{name:"Siamese",count:200}],
-    schema: [{column:"image",dtype:"PIL.Image",nonNull:7349},{column:"label",dtype:"int64",nonNull:7349,min:"0",max:"36"},{column:"segmentation",dtype:"PIL.Image",nonNull:7349}],
-    sampleRows: [{file:"Abyssinian_100.jpg",label:0,breed:"Abyssinian",species:"cat"},{file:"Bengal_101.jpg",label:1,breed:"Bengal",species:"cat"},{file:"Birman_102.jpg",label:2,breed:"Birman",species:"cat"},{file:"Bombay_103.jpg",label:3,breed:"Bombay",species:"cat"},{file:"BritSH_104.jpg",label:4,breed:"British Shorthair",species:"cat"}],
+    classDistribution: [{ name: "Abyssinian", count: 199 }, { name: "Bengal", count: 200 }, { name: "Birman", count: 199 }, { name: "Bombay", count: 200 }, { name: "Brit. SH", count: 199 }, { name: "Egyptian", count: 198 }, { name: "Persian", count: 199 }, { name: "Siamese", count: 200 }],
+    schema: [{ column: "image", dtype: "PIL.Image", nonNull: 7349 }, { column: "label", dtype: "int64", nonNull: 7349, min: "0", max: "36" }, { column: "segmentation", dtype: "PIL.Image", nonNull: 7349 }],
+    sampleRows: [{ file: "Abyssinian_100.jpg", label: 0, breed: "Abyssinian", species: "cat" }, { file: "Bengal_101.jpg", label: 1, breed: "Bengal", species: "cat" }, { file: "Birman_102.jpg", label: 2, breed: "Birman", species: "cat" }, { file: "Bombay_103.jpg", label: 3, breed: "Bombay", species: "cat" }, { file: "BritSH_104.jpg", label: 4, breed: "British Shorthair", species: "cat" }],
   },
   {
     id: "flowers", name: "Oxford Flowers 102", category: "Image", samples: 8189, size: "330 MB", format: "JPEG", classes: 102, features: 2, splits: ["train", "val", "test"],
     description: "Fine-grained visual categorization of 102 flower categories.",
-    classDistribution: [{name:"daisy",count:80},{name:"dandelion",count:80},{name:"rose",count:80},{name:"sunflower",count:80},{name:"tulip",count:80},{name:"iris",count:80},{name:"lily",count:80},{name:"orchid",count:80}],
-    schema: [{column:"image",dtype:"PIL.Image",nonNull:8189},{column:"label",dtype:"int64",nonNull:8189,min:"0",max:"101"}],
-    sampleRows: [{file:"image_00001.jpg",label:0,category:"pink primrose"},{file:"image_00002.jpg",label:0,category:"pink primrose"},{file:"image_00003.jpg",label:1,category:"hard-leaved pocket orchid"},{file:"image_00004.jpg",label:1,category:"hard-leaved pocket orchid"},{file:"image_00005.jpg",label:2,category:"canterbury bells"}],
+    classDistribution: [{ name: "daisy", count: 80 }, { name: "dandelion", count: 80 }, { name: "rose", count: 80 }, { name: "sunflower", count: 80 }, { name: "tulip", count: 80 }, { name: "iris", count: 80 }, { name: "lily", count: 80 }, { name: "orchid", count: 80 }],
+    schema: [{ column: "image", dtype: "PIL.Image", nonNull: 8189 }, { column: "label", dtype: "int64", nonNull: 8189, min: "0", max: "101" }],
+    sampleRows: [{ file: "image_00001.jpg", label: 0, category: "pink primrose" }, { file: "image_00002.jpg", label: 0, category: "pink primrose" }, { file: "image_00003.jpg", label: 1, category: "hard-leaved pocket orchid" }, { file: "image_00004.jpg", label: 1, category: "hard-leaved pocket orchid" }, { file: "image_00005.jpg", label: 2, category: "canterbury bells" }],
   },
   {
     id: "pascalvoc", name: "Pascal VOC 2012", category: "Image", samples: 11540, size: "2 GB", format: "JPEG/XML", classes: 20, features: 4, splits: ["train", "val"],
     description: "Object detection and segmentation with 20 object classes.",
-    classDistribution: [{name:"person",count:4528},{name:"car",count:1644},{name:"chair",count:1432},{name:"dog",count:1298},{name:"cat",count:1227},{name:"bird",count:1052},{name:"bottle",count:986},{name:"sofa",count:708}],
-    schema: [{column:"image",dtype:"PIL.Image",nonNull:11540},{column:"annotation",dtype:"XML",nonNull:11540},{column:"segmentation",dtype:"PIL.Image",nonNull:11540},{column:"class_set",dtype:"list[str]",nonNull:11540}],
-    sampleRows: [{file:"2007_000027.jpg",objects:1,classes:"person",width:486,height:500},{file:"2007_000032.jpg",objects:4,classes:"aeroplane",width:500,height:366},{file:"2007_000033.jpg",objects:2,classes:"aeroplane",width:500,height:375},{file:"2007_000039.jpg",objects:3,classes:"tvmonitor",width:500,height:375},{file:"2007_000042.jpg",objects:1,classes:"train",width:500,height:335}],
+    classDistribution: [{ name: "person", count: 4528 }, { name: "car", count: 1644 }, { name: "chair", count: 1432 }, { name: "dog", count: 1298 }, { name: "cat", count: 1227 }, { name: "bird", count: 1052 }, { name: "bottle", count: 986 }, { name: "sofa", count: 708 }],
+    schema: [{ column: "image", dtype: "PIL.Image", nonNull: 11540 }, { column: "annotation", dtype: "XML", nonNull: 11540 }, { column: "segmentation", dtype: "PIL.Image", nonNull: 11540 }, { column: "class_set", dtype: "list[str]", nonNull: 11540 }],
+    sampleRows: [{ file: "2007_000027.jpg", objects: 1, classes: "person", width: 486, height: 500 }, { file: "2007_000032.jpg", objects: 4, classes: "aeroplane", width: 500, height: 366 }, { file: "2007_000033.jpg", objects: 2, classes: "aeroplane", width: 500, height: 375 }, { file: "2007_000039.jpg", objects: 3, classes: "tvmonitor", width: 500, height: 375 }, { file: "2007_000042.jpg", objects: 1, classes: "train", width: 500, height: 335 }],
   },
   {
     id: "commonvoice", name: "Common Voice", category: "Audio", samples: 1580000, size: "73 GB", format: "MP3", classes: 100, features: 6, splits: ["train", "dev", "test"],
     description: "Open-source multilingual speech corpus for ASR training.",
-    classDistribution: [{name:"English",count:320000},{name:"German",count:210000},{name:"French",count:180000},{name:"Spanish",count:160000},{name:"Italian",count:120000},{name:"Japanese",count:85000},{name:"Chinese",count:75000},{name:"Other",count:430000}],
-    schema: [{column:"audio",dtype:"Audio",nonNull:1580000},{column:"sentence",dtype:"string",nonNull:1580000},{column:"locale",dtype:"string",nonNull:1580000},{column:"age",dtype:"string",nonNull:1420000},{column:"gender",dtype:"string",nonNull:1380000},{column:"duration_s",dtype:"float32",nonNull:1580000,mean:"5.2",min:"0.8",max:"30.0"}],
-    sampleRows: [{clip_id:"common_voice_en_100.mp3",sentence:"The quick brown fox",locale:"en",duration:4.2,gender:"male"},{clip_id:"common_voice_de_201.mp3",sentence:"Hallo Welt",locale:"de",duration:3.1,gender:"female"},{clip_id:"common_voice_fr_302.mp3",sentence:"Bonjour le monde",locale:"fr",duration:2.8,gender:"male"},{clip_id:"common_voice_es_403.mp3",sentence:"Hola mundo",locale:"es",duration:3.5,gender:"female"},{clip_id:"common_voice_it_504.mp3",sentence:"Ciao mondo",locale:"it",duration:2.9,gender:"male"}],
+    classDistribution: [{ name: "English", count: 320000 }, { name: "German", count: 210000 }, { name: "French", count: 180000 }, { name: "Spanish", count: 160000 }, { name: "Italian", count: 120000 }, { name: "Japanese", count: 85000 }, { name: "Chinese", count: 75000 }, { name: "Other", count: 430000 }],
+    schema: [{ column: "audio", dtype: "Audio", nonNull: 1580000 }, { column: "sentence", dtype: "string", nonNull: 1580000 }, { column: "locale", dtype: "string", nonNull: 1580000 }, { column: "age", dtype: "string", nonNull: 1420000 }, { column: "gender", dtype: "string", nonNull: 1380000 }, { column: "duration_s", dtype: "float32", nonNull: 1580000, mean: "5.2", min: "0.8", max: "30.0" }],
+    sampleRows: [{ clip_id: "common_voice_en_100.mp3", sentence: "The quick brown fox", locale: "en", duration: 4.2, gender: "male" }, { clip_id: "common_voice_de_201.mp3", sentence: "Hallo Welt", locale: "de", duration: 3.1, gender: "female" }, { clip_id: "common_voice_fr_302.mp3", sentence: "Bonjour le monde", locale: "fr", duration: 2.8, gender: "male" }, { clip_id: "common_voice_es_403.mp3", sentence: "Hola mundo", locale: "es", duration: 3.5, gender: "female" }, { clip_id: "common_voice_it_504.mp3", sentence: "Ciao mondo", locale: "it", duration: 2.9, gender: "male" }],
   },
   {
     id: "agnews", name: "AG News", category: "Text", samples: 127600, size: "29 MB", format: "CSV", classes: 4, features: 3, splits: ["train", "test"],
     description: "News articles classified into 4 topics: World, Sports, Business, Sci/Tech.",
-    classDistribution: [{name:"World",count:30000},{name:"Sports",count:30000},{name:"Business",count:30000},{name:"Sci/Tech",count:30000}],
-    schema: [{column:"label",dtype:"int64",nonNull:127600,min:"0",max:"3"},{column:"title",dtype:"string",nonNull:127600},{column:"description",dtype:"string",nonNull:127600}],
-    sampleRows: [{label:2,title:"Wall St. Bears Claw Back",description:"Reuters - Short-sellers...",length:128},{label:2,title:"Carlyle Looks Toward Growth",description:"Reuters - Private equity...",length:145},{label:3,title:"Oil and Economy Cloud",description:"AP - Stocks ended lower...",length:168},{label:3,title:"Iraq Coverage Dominated",description:"Reuters - The war in Iraq...",length:131},{label:0,title:"Peanut Allergy Treatment",description:"AP - A new treatment...",length:112}],
+    classDistribution: [{ name: "World", count: 30000 }, { name: "Sports", count: 30000 }, { name: "Business", count: 30000 }, { name: "Sci/Tech", count: 30000 }],
+    schema: [{ column: "label", dtype: "int64", nonNull: 127600, min: "0", max: "3" }, { column: "title", dtype: "string", nonNull: 127600 }, { column: "description", dtype: "string", nonNull: 127600 }],
+    sampleRows: [{ label: 2, title: "Wall St. Bears Claw Back", description: "Reuters - Short-sellers...", length: 128 }, { label: 2, title: "Carlyle Looks Toward Growth", description: "Reuters - Private equity...", length: 145 }, { label: 3, title: "Oil and Economy Cloud", description: "AP - Stocks ended lower...", length: 168 }, { label: 3, title: "Iraq Coverage Dominated", description: "Reuters - The war in Iraq...", length: 131 }, { label: 0, title: "Peanut Allergy Treatment", description: "AP - A new treatment...", length: 112 }],
   },
   {
     id: "iris", name: "Iris", category: "Tabular", samples: 150, size: "4 KB", format: "CSV", classes: 3, features: 4, splits: ["full"],
     description: "Classic 3-class flower classification (setosa, versicolor, virginica).",
-    classDistribution: [{name:"setosa",count:50},{name:"versicolor",count:50},{name:"virginica",count:50}],
-    schema: [{column:"sepal_length",dtype:"float64",nonNull:150,mean:"5.84",min:"4.3",max:"7.9"},{column:"sepal_width",dtype:"float64",nonNull:150,mean:"3.05",min:"2.0",max:"4.4"},{column:"petal_length",dtype:"float64",nonNull:150,mean:"3.76",min:"1.0",max:"6.9"},{column:"petal_width",dtype:"float64",nonNull:150,mean:"1.20",min:"0.1",max:"2.5"}],
-    sampleRows: [{sepal_length:5.1,sepal_width:3.5,petal_length:1.4,petal_width:0.2,species:"setosa"},{sepal_length:4.9,sepal_width:3.0,petal_length:1.4,petal_width:0.2,species:"setosa"},{sepal_length:7.0,sepal_width:3.2,petal_length:4.7,petal_width:1.4,species:"versicolor"},{sepal_length:6.3,sepal_width:3.3,petal_length:6.0,petal_width:2.5,species:"virginica"},{sepal_length:5.8,sepal_width:2.7,petal_length:5.1,petal_width:1.9,species:"virginica"}],
+    classDistribution: [{ name: "setosa", count: 50 }, { name: "versicolor", count: 50 }, { name: "virginica", count: 50 }],
+    schema: [{ column: "sepal_length", dtype: "float64", nonNull: 150, mean: "5.84", min: "4.3", max: "7.9" }, { column: "sepal_width", dtype: "float64", nonNull: 150, mean: "3.05", min: "2.0", max: "4.4" }, { column: "petal_length", dtype: "float64", nonNull: 150, mean: "3.76", min: "1.0", max: "6.9" }, { column: "petal_width", dtype: "float64", nonNull: 150, mean: "1.20", min: "0.1", max: "2.5" }],
+    sampleRows: [{ sepal_length: 5.1, sepal_width: 3.5, petal_length: 1.4, petal_width: 0.2, species: "setosa" }, { sepal_length: 4.9, sepal_width: 3.0, petal_length: 1.4, petal_width: 0.2, species: "setosa" }, { sepal_length: 7.0, sepal_width: 3.2, petal_length: 4.7, petal_width: 1.4, species: "versicolor" }, { sepal_length: 6.3, sepal_width: 3.3, petal_length: 6.0, petal_width: 2.5, species: "virginica" }, { sepal_length: 5.8, sepal_width: 2.7, petal_length: 5.1, petal_width: 1.9, species: "virginica" }],
   },
   {
     id: "wine", name: "Wine Quality", category: "Tabular", samples: 6497, size: "258 KB", format: "CSV", classes: 7, features: 11, splits: ["train", "test"],
     description: "Physicochemical properties of Portuguese wines with quality ratings.",
-    classDistribution: [{name:"Quality 3",count:30},{name:"Quality 4",count:216},{name:"Quality 5",count:2138},{name:"Quality 6",count:2836},{name:"Quality 7",count:1079},{name:"Quality 8",count:193},{name:"Quality 9",count:5}],
-    schema: [{column:"fixed_acidity",dtype:"float64",nonNull:6497,mean:"7.22",min:"3.8",max:"15.9"},{column:"volatile_acidity",dtype:"float64",nonNull:6497,mean:"0.34",min:"0.08",max:"1.58"},{column:"citric_acid",dtype:"float64",nonNull:6497,mean:"0.32",min:"0.0",max:"1.66"},{column:"residual_sugar",dtype:"float64",nonNull:6497,mean:"5.44",min:"0.6",max:"65.8"},{column:"alcohol",dtype:"float64",nonNull:6497,mean:"10.49",min:"8.0",max:"14.9"}],
-    sampleRows: [{fixed_acidity:7.4,volatile_acidity:0.7,citric_acid:0.0,residual_sugar:1.9,alcohol:9.4,quality:5},{fixed_acidity:7.8,volatile_acidity:0.88,citric_acid:0.0,residual_sugar:2.6,alcohol:9.8,quality:5},{fixed_acidity:7.8,volatile_acidity:0.76,citric_acid:0.04,residual_sugar:2.3,alcohol:9.8,quality:5},{fixed_acidity:6.7,volatile_acidity:0.58,citric_acid:0.08,residual_sugar:1.8,alcohol:9.5,quality:5},{fixed_acidity:5.6,volatile_acidity:0.615,citric_acid:0.0,residual_sugar:1.6,alcohol:9.8,quality:5}],
+    classDistribution: [{ name: "Quality 3", count: 30 }, { name: "Quality 4", count: 216 }, { name: "Quality 5", count: 2138 }, { name: "Quality 6", count: 2836 }, { name: "Quality 7", count: 1079 }, { name: "Quality 8", count: 193 }, { name: "Quality 9", count: 5 }],
+    schema: [{ column: "fixed_acidity", dtype: "float64", nonNull: 6497, mean: "7.22", min: "3.8", max: "15.9" }, { column: "volatile_acidity", dtype: "float64", nonNull: 6497, mean: "0.34", min: "0.08", max: "1.58" }, { column: "citric_acid", dtype: "float64", nonNull: 6497, mean: "0.32", min: "0.0", max: "1.66" }, { column: "residual_sugar", dtype: "float64", nonNull: 6497, mean: "5.44", min: "0.6", max: "65.8" }, { column: "alcohol", dtype: "float64", nonNull: 6497, mean: "10.49", min: "8.0", max: "14.9" }],
+    sampleRows: [{ fixed_acidity: 7.4, volatile_acidity: 0.7, citric_acid: 0.0, residual_sugar: 1.9, alcohol: 9.4, quality: 5 }, { fixed_acidity: 7.8, volatile_acidity: 0.88, citric_acid: 0.0, residual_sugar: 2.6, alcohol: 9.8, quality: 5 }, { fixed_acidity: 7.8, volatile_acidity: 0.76, citric_acid: 0.04, residual_sugar: 2.3, alcohol: 9.8, quality: 5 }, { fixed_acidity: 6.7, volatile_acidity: 0.58, citric_acid: 0.08, residual_sugar: 1.8, alcohol: 9.5, quality: 5 }, { fixed_acidity: 5.6, volatile_acidity: 0.615, citric_acid: 0.0, residual_sugar: 1.6, alcohol: 9.8, quality: 5 }],
   },
 ];
 
@@ -2098,6 +2099,15 @@ function fmtCount(n: number): string {
 }
 
 function DatasetsView() {
+  const { data: fetchedDatasets = [], isLoading: isDatasetsLoading } = useQuery({
+    queryKey: ["datasets"],
+    queryFn: async () => {
+      const res = await fetch("http://127.0.0.1:8000/api/datasets");
+      if (!res.ok) throw new Error("Failed to fetch datasets");
+      return res.json() as Promise<PreloadedDataset[]>;
+    }
+  });
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<DatasetCategory | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>("imagenet");
@@ -2109,7 +2119,7 @@ function DatasetsView() {
   const uploadIdRef = useRef(0);
 
   const filtered = useMemo(() => {
-    return PRELOADED_DATASETS.filter(d => {
+    return fetchedDatasets.filter(d => {
       if (categoryFilter && d.category !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -2117,39 +2127,135 @@ function DatasetsView() {
       }
       return true;
     });
-  }, [search, categoryFilter]);
+  }, [search, categoryFilter, fetchedDatasets]);
 
-  const selected = selectedId ? PRELOADED_DATASETS.find(d => d.id === selectedId) ?? null : null;
+  const { data: fetchedSelectedDataset, isLoading: isSelectedLoading } = useQuery({
+    queryKey: ["dataset", selectedId],
+    queryFn: async () => {
+      if (!selectedId) return null;
+      const res = await fetch(`http://127.0.0.1:8000/api/datasets/${selectedId}`);
+      if (!res.ok) throw new Error("Failed to fetch dataset detail");
+      return res.json() as Promise<PreloadedDataset>;
+    },
+    enabled: !!selectedId,
+  });
 
-  // Simulated upload progress
-  const simulateUpload = useCallback((file: File) => {
-    const id = `upload-${++uploadIdRef.current}`;
-    const entry: UploadFile = { id, name: file.name, size: file.size, progress: 0, status: "uploading" };
-    setUploads(prev => [...prev, entry]);
+  const selected = fetchedSelectedDataset ?? null;
 
-    let p = 0;
-    const iv = setInterval(() => {
-      p += 8 + Math.random() * 12;
-      if (p >= 100) {
-        p = 100;
-        clearInterval(iv);
-        setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: 100, status: "validating" } : u));
-        setTimeout(() => {
-          const isValid = Math.random() > 0.2;
-          setUploads(prev => prev.map(u => u.id === id ? { ...u, status: isValid ? "valid" : "error" } : u));
-        }, 1200);
-      } else {
-        setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: Math.min(100, p) } : u));
-      }
-    }, 200);
+  // Restore uploads state on mount
+  useQuery({
+    queryKey: ["recentUploads"],
+    queryFn: async () => {
+      const res = await fetch("http://127.0.0.1:8000/api/datasets/uploads");
+      if (!res.ok) throw new Error("Failed to fetch uploads");
+      const data = await res.json() as UploadFile[];
+
+      setUploads(prev => {
+        const merged = [...prev];
+        data.forEach(fetched => {
+          // If we don't already have it in state, add it
+          if (!merged.find(u => u.id === fetched.id)) {
+            merged.push({
+              id: fetched.id,
+              name: fetched.name,
+              size: fetched.size,
+              progress: fetched.progress,
+              status: fetched.status as any
+            });
+          }
+        });
+        return merged;
+      });
+      return data;
+    },
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  });
+
+  // Real upload logic
+  const startUpload = useCallback(async (file: File) => {
+    // 1. Add temporary local entry so UI responds instantly
+    const tempId = `temp-${Date.now()}-${file.name}`;
+    setUploads(prev => [...prev, { id: tempId, name: file.name, size: file.size, progress: 0, status: "uploading" }]);
+
+    try {
+      // 2. Perform the actual POST request
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("http://127.0.0.1:8000/api/datasets/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+
+      // 3. Swap the temporary ID with the real backend ID
+      setUploads(prev => prev.map(u => u.id === tempId ? { ...u, id: data.id, progress: data.upload_progress_pct } : u));
+    } catch (e) {
+      setUploads(prev => prev.map(u => u.id === tempId ? { ...u, status: "error" } : u));
+    }
   }, []);
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) return;
-    Array.from(files).forEach(f => simulateUpload(f));
-  }, [simulateUpload]);
+    Array.from(files).forEach(f => startUpload(f));
+  }, [startUpload]);
 
-  const removeUpload = (id: string) => setUploads(prev => prev.filter(u => u.id !== id));
+  // Polling for active uploads using useQueries
+  const activeUploads = uploads.filter(u => !u.id.startsWith("temp-") && (u.status === "uploading" || u.status === "validating"));
+  useQueries({
+    queries: activeUploads.map(u => ({
+      queryKey: ["uploadStatus", u.id],
+      queryFn: async () => {
+        const res = await fetch(`http://127.0.0.1:8000/api/datasets/upload/${u.id}`);
+        if (!res.ok) throw new Error("Failed to fetch upload status");
+        const data = await res.json();
+        // Update the local uploads state with the new progress/status
+        setUploads(prev => prev.map(item => item.id === u.id ? {
+          ...item,
+          progress: data.upload_progress_pct,
+          status: data.status
+        } : item));
+        return data;
+      },
+      refetchInterval: 1000, // Poll every 1 second
+    }))
+  });
+
+  const queryClient = useQueryClient();
+
+  const handleDeleteDataset = async () => {
+    if (!selectedId) return;
+    if (!confirm("Are you sure you want to delete this dataset?")) return;
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/datasets/${selectedId}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Delete failed");
+
+      setSelectedId(null);
+      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete dataset");
+    }
+  };
+
+  const removeUpload = async (id: string) => {
+    // Optimistic UI update: instantly remove it from the sidebar
+    setUploads(prev => prev.filter(u => u.id !== id));
+
+    // Also hit the backend to clean up the DB
+    if (!id.startsWith("temp-")) {
+      try {
+        await fetch(`http://127.0.0.1:8000/api/datasets/upload/${id}`, {
+          method: "DELETE"
+        });
+      } catch (e) {
+        console.error("Failed to remove upload from backend", e);
+      }
+    }
+  };
 
   const maxClassCount = selected ? Math.max(...selected.classDistribution.map(c => c.count)) : 0;
 
@@ -2167,11 +2273,24 @@ function DatasetsView() {
                 <h1 className="text-sm font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Datasets</h1>
               </div>
               <p className="text-[11px] text-[#525c70]" style={MONO}>
-                {PRELOADED_DATASETS.length} available · {uploads.filter(u => u.status === "valid").length} uploaded · {uploads.filter(u => u.status === "uploading").length} in progress
+                {fetchedDatasets.length} available · {uploads.filter(u => u.status === "valid").length} uploaded · {uploads.filter(u => u.status === "uploading").length} in progress
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-border text-[#525c70] hover:text-[#8891a8] hover:border-[rgba(255,255,255,0.15)] transition-colors" style={MONO}>
+              {selectedId && (
+                <button
+                  onClick={handleDeleteDataset}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-[rgba(240,64,64,0.3)] text-[#f04040] hover:bg-[rgba(240,64,64,0.1)] transition-colors"
+                  style={MONO}
+                >
+                  <Trash2 size={10} /> Delete
+                </button>
+              )}
+              <button
+                onClick={() => selectedId && window.open(`http://127.0.0.1:8000/api/datasets/${selectedId}/export`, "_blank")}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-border text-[#525c70] hover:text-[#8891a8] hover:border-[rgba(255,255,255,0.15)] transition-colors"
+                style={MONO}
+              >
                 <Download size={10} /> Export
               </button>
             </div>
@@ -2180,9 +2299,9 @@ function DatasetsView() {
           {/* Summary stat cards */}
           <div className="grid grid-cols-4 gap-3 mt-5">
             {[
-              { label: "Total Datasets", value: String(PRELOADED_DATASETS.length + uploads.filter(u => u.status === "valid").length), sub: "ready to use", color: "#00d4a0" },
-              { label: "Image Datasets", value: String(PRELOADED_DATASETS.filter(d => d.category === "Image").length), sub: `${fmtCount(PRELOADED_DATASETS.filter(d => d.category === "Image").reduce((s, d) => s + d.samples, 0))} samples`, color: "#7c6cf8" },
-              { label: "Total Samples", value: fmtCount(PRELOADED_DATASETS.reduce((s, d) => s + d.samples, 0)), sub: "across all datasets", color: "#3ba6ff" },
+              { label: "Total Datasets", value: String(fetchedDatasets.length + uploads.filter(u => u.status === "valid").length), sub: "ready to use", color: "#00d4a0" },
+              { label: "Image Datasets", value: String(fetchedDatasets.filter(d => d.category === "Image").length), sub: `${fmtCount(fetchedDatasets.filter(d => d.category === "Image").reduce((s, d) => s + d.samples, 0))} samples`, color: "#7c6cf8" },
+              { label: "Total Samples", value: fmtCount(fetchedDatasets.reduce((s, d) => s + d.samples, 0)), sub: "across all datasets", color: "#3ba6ff" },
               { label: "Uploads", value: String(uploads.length), sub: `${uploads.filter(u => u.status === "uploading").length} active`, color: "#f5a623" },
             ].map(c => (
               <div key={c.label} className="border border-border bg-card px-4 py-3">
@@ -2218,22 +2337,20 @@ function DatasetsView() {
           <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1">
             <button
               onClick={() => setCategoryFilter(null)}
-              className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${
-                !categoryFilter
+              className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${!categoryFilter
                   ? "border-[#00d4a0]/40 text-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
                   : "border-border text-[#525c70] hover:text-[#8891a8]"
-              }`}
+                }`}
               style={MONO}
             >All</button>
             {ALL_CATEGORIES.map(cat => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
-                className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${
-                  categoryFilter === cat
+                className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${categoryFilter === cat
                     ? `border-[${CATEGORY_COLORS[cat]}]/40 text-[${CATEGORY_COLORS[cat]}] bg-[rgba(0,212,160,0.06)]`
                     : "border-border text-[#525c70] hover:text-[#8891a8]"
-                }`}
+                  }`}
                 style={{ ...(categoryFilter === cat ? { color: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat] + "66", backgroundColor: CATEGORY_COLORS[cat] + "0f" } : {}), ...MONO }}
               >{cat}</button>
             ))}
@@ -2254,11 +2371,10 @@ function DatasetsView() {
                   <button
                     key={ds.id}
                     onClick={() => { setSelectedId(ds.id); setPreviewTab("overview"); setSamplePage(0); }}
-                    className={`w-full text-left px-3 py-2.5 border-l-2 transition-all ${
-                      isActive
+                    className={`w-full text-left px-3 py-2.5 border-l-2 transition-all ${isActive
                         ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
                         : "border-transparent hover:bg-[rgba(255,255,255,0.02)]"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 mb-0.5">
                       <CatIcon size={11} style={{ color: CATEGORY_COLORS[ds.category] }} strokeWidth={1.5} />
@@ -2318,11 +2434,10 @@ function DatasetsView() {
                   <button
                     key={tab}
                     onClick={() => { setPreviewTab(tab); setSamplePage(0); }}
-                    className={`px-4 py-2.5 text-[10px] uppercase tracking-widest border-b-2 transition-colors ${
-                      previewTab === tab
+                    className={`px-4 py-2.5 text-[10px] uppercase tracking-widest border-b-2 transition-colors ${previewTab === tab
                         ? "border-[#00d4a0] text-[#00d4a0]"
                         : "border-transparent text-[#525c70] hover:text-[#8891a8]"
-                    }`}
+                      }`}
                     style={MONO}
                   >{tab}</button>
                 ))}
@@ -2472,11 +2587,10 @@ function DatasetsView() {
           {/* Drag-drop zone */}
           <div className="p-3">
             <div
-              className={`border-2 border-dashed rounded-sm p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
-                dragOver
+              className={`border-2 border-dashed rounded-sm p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${dragOver
                   ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
                   : "border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.01)]"
-              }`}
+                }`}
               onDragOver={e => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}

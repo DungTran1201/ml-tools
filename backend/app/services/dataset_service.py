@@ -121,3 +121,13 @@ def soft_delete_dataset(db: Session, dataset_id: str, project_id: str) -> bool:
     dataset.is_deleted = 1
     db.commit()
     return True
+
+def get_recent_uploads(db: Session, project_id: str, limit: int = 10) -> List[DatasetUpload]:
+    """
+    Get recent uploads for a project to restore UI state on refresh.
+    """
+    return db.query(DatasetUpload)\
+        .filter(DatasetUpload.project_id == project_id)\
+        .order_by(DatasetUpload.created_at.desc())\
+        .limit(limit)\
+        .all()
