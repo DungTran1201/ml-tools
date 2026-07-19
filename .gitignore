@@ -233,6 +233,3 @@ frontend/build/
 backend/build/
 frontend/.vite/
 backend/.vite/
-
-# docs 
-.docs/

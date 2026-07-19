@@ -1,6 +1,6 @@
 import sqlite3
-conn = sqlite3.connect(":memory:")
-conn.executescript(open("schema.sql", encoding="utf-8").read())
+conn = sqlite3.connect(r"C:\Users\PC\Desktop\ml-tools\database\app.db")
+conn.executescript(open(r"C:\Users\PC\Desktop\ml-tools\database\schema.sql", encoding="utf-8").read())
 tables = conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
 ).fetchall()
