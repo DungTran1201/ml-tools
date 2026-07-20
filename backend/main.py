@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logger import setup_logging
-from app.api.endpoints import datasets
+from app.api.endpoints import datasets, models
 
 logger = setup_logging()
 
@@ -49,6 +49,7 @@ app.add_middleware(
 )
 
 app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
+app.include_router(models.router, prefix="/api/models", tags=["Models"])
 
 # ── Root ─────────────────────────────────────────────────────────────────────
 

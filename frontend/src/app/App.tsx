@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area, SparklineChart,
@@ -852,6 +852,28 @@ function ModelCardComponent({ model, onUseBase, onViewArch }: {
 }) {
   const [hovered, setHovered] = useState(false);
   const [starred, setStarred] = useState(model.starred);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setStarred(model.starred);
+  }, [model.starred]);
+
+  const toggleStar = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`http://localhost:8000/api/models/${model.id}/star`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to toggle star");
+      return res.json();
+    },
+    onMutate: () => {
+      setStarred(s => !s);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+    },
+    onError: () => {
+      setStarred(model.starred); // revert on failure
+    }
+  });
   const fc = FAMILY_COLORS[model.family];
 
   return (
@@ -875,7 +897,8 @@ function ModelCardComponent({ model, onUseBase, onViewArch }: {
         {/* Star */}
         <button
           className="absolute top-2 right-2 transition-opacity"
-          onClick={() => setStarred(s => !s)}
+          onClick={(e) => { e.stopPropagation(); toggleStar.mutate(); }}
+          disabled={toggleStar.isPending}
         >
           <Star size={11} fill={starred ? "#f5a623" : "none"} stroke={starred ? "#f5a623" : "rgba(255,255,255,0.3)"} strokeWidth={1.5} />
         </button>
@@ -950,8 +973,25 @@ function ModelCardComponent({ model, onUseBase, onViewArch }: {
 }
 
 // Arch detail modal
-function ArchModal({ model, onClose }: { model: ModelCard; onClose: () => void }) {
+function ArchModal({ model, onClose, onUseBase }: { model: ModelCard; onClose: () => void; onUseBase: (id: string) => void }) {
   const fc = FAMILY_COLORS[model.family];
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      const res = await fetch(`http://localhost:8000/api/models/${model.id}/download`);
+      if (!res.ok) throw new Error("Download failed");
+      const data = await res.json();
+      if (data.download_url) {
+        window.open(data.download_url, "_blank");
+      }
+    } catch (err) {
+      console.error("Failed to download model weights", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
@@ -1007,12 +1047,17 @@ function ArchModal({ model, onClose }: { model: ModelCard; onClose: () => void }
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button className="flex-1 py-2 text-[10px] uppercase tracking-widest font-medium transition-colors border"
+              <button 
+                onClick={() => onUseBase(model.id)}
+                className="flex-1 py-2 text-[10px] uppercase tracking-widest font-medium transition-colors border"
                 style={{ color: fc.text, borderColor: fc.border, backgroundColor: fc.bg, ...MONO }}>
                 Use as Base Model
               </button>
-              <button className="px-4 py-2 text-[10px] uppercase tracking-widest text-[#525c70] border border-border hover:text-[#8891a8] transition-colors" style={MONO}>
-                <Download size={11} />
+              <button 
+                onClick={handleDownload}
+                disabled={downloading}
+                className="px-4 py-2 text-[10px] uppercase tracking-widest text-[#525c70] border border-border hover:text-[#8891a8] transition-colors disabled:opacity-50" style={MONO}>
+                {downloading ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
               </button>
             </div>
           </div>
@@ -1031,28 +1076,53 @@ function ModelsView() {
 
   const families: (ModelFamily | "All")[] = ["All", "CNN", "Transformer", "Classical", "Segmentation", "Detection", "Lightweight", "Multimodal"];
 
-  const filtered = useMemo(() => {
-    return MODELS
-      .filter(m => {
-        if (activeFamily !== "All" && m.family !== activeFamily) return false;
-        if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.description.toLowerCase().includes(search.toLowerCase())) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortBy === "name") return a.name.localeCompare(b.name);
-        if (sortBy === "forks") return b.forks - a.forks;
-        if (sortBy === "params") return parseFloat(a.params) - parseFloat(b.params);
-        if (sortBy === "top1") {
-          const av = parseFloat(a.top1) || 0;
-          const bv = parseFloat(b.top1) || 0;
-          return bv - av;
-        }
-        return 0;
-      });
-  }, [search, activeFamily, sortBy]);
+  const { data: rawModels = [], isLoading } = useQuery({
+    queryKey: ["models", search, activeFamily, sortBy],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (search) qs.append("search", search);
+      if (activeFamily !== "All") qs.append("family", activeFamily);
+      qs.append("sort_by", sortBy === "top1" ? "accuracy" : sortBy);
+      const res = await fetch(`http://localhost:8000/api/models?${qs.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch models");
+      return res.json() as Promise<any[]>;
+    }
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ["models", "stats"],
+    queryFn: async () => {
+      const res = await fetch("http://localhost:8000/api/models/stats");
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    }
+  });
+
+  const models: ModelCard[] = useMemo(() => {
+    return rawModels.map((m: any) => ({
+      id: m.id,
+      name: m.name,
+      fullName: m.full_name,
+      family: m.family as ModelFamily,
+      params: m.param_count != null ? (m.param_count / 1_000_000 >= 1000 ? (m.param_count / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + "B" : (m.param_count / 1_000_000).toFixed(1).replace(/\.0$/, '') + "M") : "—",
+      flops: m.flops != null ? (m.flops / 1_000_000_000 >= 1000 ? (m.flops / 1_000_000_000_000).toFixed(1).replace(/\.0$/, '') + "T" : (m.flops / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + "B") : "—",
+      top1: m.top1_acc != null ? (m.top1_acc * 100).toFixed(1) + "%" : "—",
+      inputSize: m.input_size || "—",
+      depth: m.depth || 0,
+      source: m.source || "—",
+      description: m.description || "",
+      tags: m.tags?.map((t: any) => t.tag) || [],
+      starred: m.is_starred || false,
+      forks: m.fork_count || 0
+    }));
+  }, [rawModels]);
+
+  const filtered = models;
 
   const handleUseBase = (id: string) => {
-    const m = MODELS.find(m => m.id === id)!;
+    const m = models.find(m => m.id === id);
+    if (!m) return;
+    localStorage.setItem('base_model_id', m.id);
     setBaseToast(m.name);
     setTimeout(() => setBaseToast(null), 2800);
   };
@@ -1069,7 +1139,7 @@ function ModelsView() {
                 <h1 className="text-sm font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Model Library</h1>
               </div>
               <p className="text-[11px] text-[#525c70]" style={MONO}>
-                {MODELS.length} architectures · select a base for your next training run
+                {stats?.total_models ?? 0} architectures · select a base for your next training run
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1088,12 +1158,12 @@ function ModelsView() {
           {/* Summary row */}
           <div className="grid grid-cols-6 gap-3">
             {[
-              { label: "Total Models", value: String(MODELS.length), color: "#d4dae8" },
-              { label: "CNN Architectures", value: String(MODELS.filter(m => m.family === "CNN").length), color: "#00d4a0" },
-              { label: "Transformers", value: String(MODELS.filter(m => m.family === "Transformer").length), color: "#7c6cf8" },
-              { label: "Classical ML", value: String(MODELS.filter(m => m.family === "Classical").length), color: "#e8a838" },
-              { label: "Seg / Det", value: String(MODELS.filter(m => m.family === "Segmentation" || m.family === "Detection").length), color: "#3ba6ff" },
-              { label: "Starred", value: String(MODELS.filter(m => m.starred).length), color: "#f5a623" },
+              { label: "Total Models", value: String(stats?.total_models ?? 0), color: "#d4dae8" },
+              { label: "CNN Architectures", value: String(stats?.cnn_models ?? 0), color: "#00d4a0" },
+              { label: "Transformers", value: String(stats?.transformer_models ?? 0), color: "#7c6cf8" },
+              { label: "Classical ML", value: String(stats?.classical_models ?? 0), color: "#e8a838" },
+              { label: "Seg / Det", value: String(stats?.seg_det_models ?? 0), color: "#3ba6ff" },
+              { label: "Starred", value: String(stats?.starred_models ?? 0), color: "#f5a623" },
             ].map(c => (
               <div key={c.label} className="border border-border bg-card px-4 py-2.5">
                 <div className="text-[8px] uppercase tracking-widest text-[#525c70] mb-1" style={MONO}>{c.label}</div>
@@ -1134,14 +1204,18 @@ function ModelsView() {
             })}
           </div>
 
-          <div className="text-[10px] text-[#525c70]" style={MONO}>{filtered.length} / {MODELS.length}</div>
+          <div className="text-[10px] text-[#525c70]" style={MONO}>{filtered.length} / {stats?.total_models ?? 0}</div>
         </div>
       </div>
 
       {/* ── Grid ── */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center h-40 text-[#525c70] text-[11px]" style={MONO}>
+              <Loader2 className="animate-spin mr-2" size={14} /> Loading models...
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-[#525c70] text-[11px]" style={MONO}>No models match.</div>
           ) : (
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
@@ -1150,7 +1224,7 @@ function ModelsView() {
                   key={m.id}
                   model={m}
                   onUseBase={handleUseBase}
-                  onViewArch={id => setArchModal(MODELS.find(x => x.id === id)!)}
+                  onViewArch={id => setArchModal(models.find(x => x.id === id)!)}
                 />
               ))}
             </div>
@@ -1159,7 +1233,7 @@ function ModelsView() {
       </div>
 
       {/* Arch modal */}
-      {archModal && <ArchModal model={archModal} onClose={() => setArchModal(null)} />}
+      {archModal && <ArchModal model={archModal} onClose={() => setArchModal(null)} onUseBase={handleUseBase} />}
 
       {/* Base toast */}
       {baseToast && (
