@@ -1,0 +1,14 @@
+- `[x]` **Phase 1: Core Database Schemas & Base Models**
+  - `[x]` Step 1: Setup database connection and create core models (`User`, `Project`, `ProjectMember`) and seed script.
+  - `[x]` Step 2: Create models for Training Run Hub (`TrainingRun`, `RunMetric`, `RunLog`, `HyperparameterConfig`, `Checkpoint`, `HardwareConfig`).
+- `[x]` **Phase 2: Primary Management & Execution APIs**
+  - `[x]` Step 3: Implement Project Management CRUD API.
+  - `[x]` Step 4: Implement global `X-Project-ID` dependency/middleware.
+  - `[x]` Step 5: Implement Training Run Launch API.
+- `[x]` **Phase 3: Real-time Streaming & Multi-Project Isolation**
+  - `[x]` Step 6: Implement Mock Training Engine daemon.
+  - `[x]` Step 7: Implement WebSocket endpoint for Dashboard Live Updates.
+  - `[x]` Step 8: Implement Aggregate Refresher.
+- `[ ]` **Phase 4: Secondary Controls & Edge Cases**
+  - `[ ]` Step 9: Implement Run Controls API (Pause, Resume, Stop).
+  - `[ ]` Step 10: Implement Mid-Run Hyperparameter Update API and Project Archiving constraints.

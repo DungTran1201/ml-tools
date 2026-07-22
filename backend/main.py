@@ -19,10 +19,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logger import setup_logging
-from app.api.endpoints import datasets, models
+from app.api.endpoints import datasets, models, training, projects
 
 logger = setup_logging()
 
+
+import asyncio
+from app.services.mock_engine import mock_training_engine_loop
 
 # ── Lifespan: startup / shutdown logging ─────────────────────────────────────
 
@@ -31,8 +34,19 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s", settings.PROJECT_NAME)
     logger.info("Database: %s", settings.DATABASE_PATH)
     logger.info("Log file: %s", settings.LOG_DIR / "ml_tools.log")
+    
+    # Start mock training engine daemon
+    engine_task = asyncio.create_task(mock_training_engine_loop())
+    
     yield
+    
     logger.info("Shutting down %s", settings.PROJECT_NAME)
+    # Stop mock training engine daemon
+    engine_task.cancel()
+    try:
+        await engine_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -48,8 +62,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
 app.include_router(models.router, prefix="/api/models", tags=["Models"])
+app.include_router(training.router, prefix="/api/training", tags=["Training"])
 
 # ── Root ─────────────────────────────────────────────────────────────────────
 
