@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logger import setup_logging
-from app.api.endpoints import datasets, models, training, projects
+from app.api.endpoints import datasets, models, training, projects, hardware
 
 logger = setup_logging()
 
 
 import asyncio
-from app.services.mock_engine import mock_training_engine_loop
+from app.services.mock_engine import mock_training_engine_loop, mock_watchdog_loop
+from app.services.hardware_daemon import mock_hardware_daemon_loop
 
 # ── Lifespan: startup / shutdown logging ─────────────────────────────────────
 
@@ -37,14 +38,20 @@ async def lifespan(app: FastAPI):
     
     # Start mock training engine daemon
     engine_task = asyncio.create_task(mock_training_engine_loop())
+    # Start mock hardware telemetry daemon
+    hardware_task = asyncio.create_task(mock_hardware_daemon_loop())
+    # Start watchdog daemon
+    watchdog_task = asyncio.create_task(mock_watchdog_loop())
     
     yield
     
     logger.info("Shutting down %s", settings.PROJECT_NAME)
-    # Stop mock training engine daemon
+    # Stop daemons
     engine_task.cancel()
+    hardware_task.cancel()
+    watchdog_task.cancel()
     try:
-        await engine_task
+        await asyncio.gather(engine_task, hardware_task, watchdog_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
 
@@ -66,6 +73,7 @@ app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
 app.include_router(models.router, prefix="/api/models", tags=["Models"])
 app.include_router(training.router, prefix="/api/training", tags=["Training"])
+app.include_router(hardware.router, prefix="/api/hardware", tags=["Hardware"])
 
 # ── Root ─────────────────────────────────────────────────────────────────────
 

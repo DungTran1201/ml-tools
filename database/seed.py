@@ -10,6 +10,7 @@ sys.path.append(backend_dir)
 from app.core.database import SessionLocal
 from app.models.user import User
 from app.models.project import Project
+from app.models.training import HardwareConfig
 
 def seed():
     db = SessionLocal()
@@ -50,6 +51,25 @@ def seed():
             print(f"Created default project: {project.id}")
         else:
             print(f"Default project already exists: {project.id}")
+
+        # 3. Seed Hardware Config
+        hw_config = db.query(HardwareConfig).first()
+        if not hw_config:
+            hw_config = HardwareConfig(
+                id=str(uuid.uuid4()),
+                gpu_model="NVIDIA A100 80GB",
+                gpu_count=4,
+                cpu_model="32-core Xeon",
+                ram_total_gb=512,
+                storage_type="NVMe RAID-0",
+                created_at=datetime.utcnow().isoformat()
+            )
+            db.add(hw_config)
+            db.commit()
+            db.refresh(hw_config)
+            print(f"Created default hardware config: {hw_config.id}")
+        else:
+            print(f"Hardware config already exists: {hw_config.id}")
 
     finally:
         db.close()

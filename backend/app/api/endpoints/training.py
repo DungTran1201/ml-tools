@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSoc
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.training import TrainingRunLaunch, TrainingRunResponse
+from app.schemas.training import TrainingRunLaunch, TrainingRunResponse, RunActionSchema
 from app.services.training_service import launch_run, TrainingServiceException
 from app.api.deps import get_current_user, verify_project_access
 from app.models.user import User
@@ -10,7 +10,7 @@ from app.core.websockets import manager
 
 router = APIRouter()
 
-@router.post("/launch", response_model=TrainingRunResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/runs", response_model=TrainingRunResponse, status_code=status.HTTP_201_CREATED)
 def launch_training_run(
     payload: TrainingRunLaunch,
     db: Session = Depends(get_db),
@@ -53,43 +53,23 @@ def get_run_aggregate_api(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/{run_id}/pause")
-def pause_run_api(
+@router.post("/{run_id}/action")
+def run_action_api(
     run_id: str,
+    payload: RunActionSchema,
     db: Session = Depends(get_db),
     active_project_id: str = Depends(verify_project_access)
 ):
-    from app.services.training_service import pause_run
+    from app.services.training_service import pause_run, resume_run, stop_run
     try:
-        return pause_run(db=db, run_id=run_id, project_id=active_project_id)
-    except TrainingServiceException as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-@router.post("/{run_id}/resume")
-def resume_run_api(
-    run_id: str,
-    db: Session = Depends(get_db),
-    active_project_id: str = Depends(verify_project_access)
-):
-    from app.services.training_service import resume_run
-    try:
-        return resume_run(db=db, run_id=run_id, project_id=active_project_id)
-    except TrainingServiceException as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-@router.post("/{run_id}/stop")
-def stop_run_api(
-    run_id: str,
-    db: Session = Depends(get_db),
-    active_project_id: str = Depends(verify_project_access)
-):
-    from app.services.training_service import stop_run
-    try:
-        return stop_run(db=db, run_id=run_id, project_id=active_project_id)
+        if payload.action == "pause":
+            return pause_run(db=db, run_id=run_id, project_id=active_project_id)
+        elif payload.action == "resume":
+            return resume_run(db=db, run_id=run_id, project_id=active_project_id)
+        elif payload.action == "stop":
+            return stop_run(db=db, run_id=run_id, project_id=active_project_id)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
     except TrainingServiceException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:

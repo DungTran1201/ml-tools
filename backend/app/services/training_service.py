@@ -77,7 +77,7 @@ def launch_run(db: Session, user_id: str, payload: TrainingRunLaunch) -> Trainin
         name=payload.name,
         epochs_total=int(payload.hyperparameters.epochs),
         epochs_completed=0,
-        status='running',
+        status='pending',
         started_at=now_str,
         project_id=payload.project_id,
         user_id=user_id,

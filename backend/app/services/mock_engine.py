@@ -11,6 +11,57 @@ from app.core.websockets import manager
 
 logger = logging.getLogger(__name__)
 
+async def mock_watchdog_loop():
+    """
+    Heartbeat Watchdog daemon to detect zombie runs.
+    Sweeps for 'running' runs whose updated_at is older than 30 seconds,
+    and transitions them to 'failed'.
+    """
+    logger.info("Starting Watchdog Daemon...")
+    while True:
+        try:
+            await check_zombie_runs()
+        except asyncio.CancelledError:
+            logger.info("Watchdog Daemon stopped.")
+            break
+        except Exception as e:
+            logger.error(f"Error in Watchdog daemon: {e}")
+        
+        await asyncio.sleep(10)  # Check every 10 seconds
+
+async def check_zombie_runs():
+    db = SessionLocal()
+    try:
+        active_runs = db.query(TrainingRun).filter(TrainingRun.status == 'running').all()
+        now_dt = datetime.now(timezone.utc)
+        
+        for run in active_runs:
+            if run.updated_at:
+                try:
+                    updated_dt = datetime.strptime(run.updated_at, '%Y-%m-%dT%H:%M:%fZ').replace(tzinfo=timezone.utc)
+                    if (now_dt - updated_dt).total_seconds() > 30:
+                        logger.warning(f"Watchdog detected zombie run: {run.id}. Transitioning to failed.")
+                        run.status = 'failed'
+                        run.error_message = "Training Engine daemon crashed (Watchdog timeout)"
+                        
+                        # Add failure log
+                        db.add(RunLog(
+                            run_id=run.id,
+                            line_number=run.epochs_completed + 1,
+                            level="ERROR",
+                            message="Run terminated ungracefully. Watchdog recovered state.",
+                            logged_at=int(time.time())
+                        ))
+                except ValueError:
+                    pass
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
 async def mock_training_engine_loop():
     """
     Background daemon that simulates training progress.
@@ -32,10 +83,30 @@ async def advance_running_trainings():
     # Use a fresh DB session for the background worker
     db = SessionLocal()
     try:
+        # Find all runs that are currently "pending" and switch to "running"
+        pending_runs = db.query(TrainingRun).filter(TrainingRun.status == 'pending').all()
+        now_ts = int(time.time())
+        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%fZ')
+
+        for prun in pending_runs:
+            prun.status = 'running'
+            prun.updated_at = now_str
+            # Add initial log
+            init_log = RunLog(
+                run_id=prun.id,
+                line_number=0,
+                level="INFO",
+                message="Training Engine started processing the run. Acquired GPU lock.",
+                logged_at=now_ts
+            )
+            db.add(init_log)
+            logger.info(f"Mock Engine picked up pending run {prun.id}, transitioned to running.")
+
         # Find all runs that are currently "running"
         active_runs = db.query(TrainingRun).filter(TrainingRun.status == 'running').all()
         
         if not active_runs:
+            db.commit()
             return
             
         now_ts = int(time.time())
@@ -91,12 +162,13 @@ async def advance_running_trainings():
             if new_epoch >= run.epochs_total:
                 run.status = 'completed'
                 run.finished_at = now_str
+                run.checkpoint_path = f"s3://ml-tools-checkpoints/{run.project_id}/{run.id}/best_model.pt"
                 # Add final log
                 final_log = RunLog(
                     run_id=run.id,
                     line_number=new_epoch + 1,
                     level="INFO",
-                    message="Training completed successfully.",
+                    message=f"Training completed successfully. Checkpoint saved to {run.checkpoint_path}",
                     logged_at=now_ts
                 )
                 db.add(final_log)

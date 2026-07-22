@@ -64,3 +64,7 @@ class RunLogSchema(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
+
+class RunActionSchema(BaseModel):
+    action: str
+

@@ -20,15 +20,22 @@ def get_current_user(db: Session = Depends(get_db)):
     return user
 
 def verify_project_access(
-    x_project_id: str = Header(...),
+    x_project_id: str = Header(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> str:
     """
     Dependency to enforce multi-tenant isolation.
-    Extracts X-Project-ID header and verifies the user has access.
+    Extracts X-Project-ID header or falls back to the user's default project.
     Returns the project_id to be used in WHERE clauses.
     """
+    if not x_project_id:
+        # Fallback to default project for the user
+        default_project = db.query(Project).filter(Project.user_id == current_user.id, Project.is_archived == 0).first()
+        if not default_project:
+            raise HTTPException(status_code=403, detail="No active project found for user.")
+        x_project_id = default_project.id
+
     member = db.query(ProjectMember).filter(
         ProjectMember.project_id == x_project_id,
         ProjectMember.user_id == current_user.id
