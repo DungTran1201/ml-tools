@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -13,8 +13,8 @@ class ProjectMemberRead(ProjectMemberBase):
     model_config = ConfigDict(from_attributes=True)
 
 class ProjectBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., max_length=50)
+    description: Optional[str] = Field(None, max_length=250)
 
 class ProjectCreate(ProjectBase):
     pass

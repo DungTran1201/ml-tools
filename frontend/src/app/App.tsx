@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment, createContext, useContext } from "react";
 import { useQuery, useQueries, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,13 +14,54 @@ import {
   Star, GitFork, BookOpen, Cpu, Network,
   Thermometer, MemoryStick, Database, Activity,
   Upload, FolderOpen, FileText, FileArchive, Image,
-  Table2, Eye, Trash2, UploadCloud, Package, AlertCircle, Info,
+  Table2, Eye, Trash2, UploadCloud, Package, AlertCircle, Info, Folder, Plus, Archive, MoreVertical, Check,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MetricPoint { step: number; trainLoss: number; valLoss: number; trainAcc: number; valAcc: number; }
 interface HardwarePoint { t: number; cpu: number; gpu: number; vram: number; ram: number; }
+interface Project { id: string; name: string; description: string; is_archived: number; created_at: string; }
+
+
+const API_BASE = "http://localhost:8000/api";
+
+const ProjectContext = createContext<{
+  activeProjectId: string | null;
+  setActiveProjectId: (id: string | null) => void;
+  fetchApi: (endpoint: string, options?: RequestInit) => Promise<any>;
+} | null>(null);
+
+function useProjectContext() {
+  const ctx = useContext(ProjectContext);
+  if (!ctx) throw new Error("useProjectContext must be used within ProjectContext.Provider");
+  return ctx;
+}
+
+function useApi() {
+  const { fetchApi } = useProjectContext();
+  return fetchApi;
+}
+
+
+function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/projects/`);
+      if (!res.ok) throw new Error("Failed to fetch projects");
+      return (await res.json()) as Project[];
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+const MOCK_PROJECTS: Project[] = [
+  { id: "proj-1", name: "Computer Vision Core", description: "Main project for all vision models", is_archived: 0, created_at: "2026-07-01T10:00:00Z" },
+  { id: "proj-2", name: "NLP Experiments", description: "Testing new LLM fine-tunes", is_archived: 0, created_at: "2026-07-05T14:30:00Z" },
+  { id: "proj-3", name: "Legacy Recommender", description: "Old recommender system models", is_archived: 1, created_at: "2025-11-20T09:15:00Z" },
+];
+
 
 type RunStatus = "completed" | "running" | "failed" | "stopped";
 
@@ -1047,13 +1088,13 @@ function ArchModal({ model, onClose, onUseBase }: { model: ModelCard; onClose: (
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button 
+              <button
                 onClick={() => onUseBase(model.id)}
                 className="flex-1 py-2 text-[10px] uppercase tracking-widest font-medium transition-colors border"
                 style={{ color: fc.text, borderColor: fc.border, backgroundColor: fc.bg, ...MONO }}>
                 Use as Base Model
               </button>
-              <button 
+              <button
                 onClick={handleDownload}
                 disabled={downloading}
                 className="px-4 py-2 text-[10px] uppercase tracking-widest text-[#525c70] border border-border hover:text-[#8891a8] transition-colors disabled:opacity-50" style={MONO}>
@@ -2151,6 +2192,12 @@ const CATEGORY_COLORS: Record<DatasetCategory, string> = { Image: "#7c6cf8", Tex
 const CATEGORY_ICONS: Record<DatasetCategory, React.ElementType> = { Image: Image, Text: FileText, Tabular: Table2, Audio: Activity };
 const ALL_CATEGORIES: DatasetCategory[] = ["Image", "Text", "Tabular", "Audio"];
 
+const getCategoryKey = (cat: string): DatasetCategory => {
+  if (!cat) return "Text";
+  const normalized = (cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase()) as DatasetCategory;
+  return ALL_CATEGORIES.includes(normalized) ? normalized : "Text";
+};
+
 interface UploadFile {
   id: string;
   name: string;
@@ -2172,7 +2219,287 @@ function fmtCount(n: number): string {
   return String(n);
 }
 
+interface PresetCatalog {
+  key: string;
+  name: string;
+  category: DatasetCategory;
+  provider: string;
+  description: string;
+  default_splits: string;
+  class_count: number;
+  estimated_size: string;
+}
+
+interface PresetPreview {
+  preset: PresetCatalog;
+  schema: { column: string; dtype: string; nonNull: number; mean?: string; min?: string; max?: string }[];
+  classDistribution: { name: string; count: number }[];
+}
+
+function PresetPreviewModal({ preset, onClose, onImport }: { preset: PresetCatalog; onClose: () => void; onImport: (key: string) => void }) {
+  const { data: preview, isLoading } = useQuery({
+    queryKey: ["presetPreview", preset.key],
+    queryFn: async () => {
+      const res = await fetch(`http://127.0.0.1:8000/api/datasets/presets/${preset.key}/preview`);
+      if (!res.ok) throw new Error("Preview failed");
+      return res.json() as Promise<PresetPreview>;
+    }
+  });
+  
+  const fc = CATEGORY_COLORS[getCategoryKey(preset.category)] || { text: "#fff", bg: "transparent", border: "transparent" };
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div
+        className="bg-[#0d1017] border border-[rgba(255,255,255,0.12)] w-full max-w-2xl mx-4 flex flex-col"
+        style={{ maxHeight: "85vh" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+          <div className="flex items-center gap-3">
+            <span className="text-[8px] uppercase tracking-widest px-1.5 py-0.5 border" style={{ color: fc.text, borderColor: fc.border, backgroundColor: fc.bg, ...MONO }}>{preset.category}</span>
+            <span className="text-sm font-semibold text-[#d4dae8]" style={MONO}>{preset.name}</span>
+          </div>
+          <button onClick={onClose} className="text-[#525c70] hover:text-[#8891a8] transition-colors"><X size={14} /></button>
+        </div>
+        
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+           <p className="text-[11px] text-[#8891a8] leading-relaxed font-sans">{preset.description}</p>
+           
+           <div className="grid grid-cols-4 gap-3">
+             <div className="bg-[#07090f] border border-border px-3 py-2.5">
+               <div className="text-[8px] uppercase tracking-widest text-[#525c70] mb-1" style={MONO}>Provider</div>
+               <div className="text-[12px] font-medium text-[#d4dae8]" style={MONO}>{preset.provider}</div>
+             </div>
+             <div className="bg-[#07090f] border border-border px-3 py-2.5">
+               <div className="text-[8px] uppercase tracking-widest text-[#525c70] mb-1" style={MONO}>Classes</div>
+               <div className="text-[12px] font-medium text-[#d4dae8]" style={MONO}>{preset.class_count}</div>
+             </div>
+             <div className="bg-[#07090f] border border-border px-3 py-2.5">
+               <div className="text-[8px] uppercase tracking-widest text-[#525c70] mb-1" style={MONO}>Size</div>
+               <div className="text-[12px] font-medium text-[#d4dae8]" style={MONO}>{preset.estimated_size}</div>
+             </div>
+             <div className="bg-[#07090f] border border-border px-3 py-2.5">
+               <div className="text-[8px] uppercase tracking-widest text-[#525c70] mb-1" style={MONO}>Splits</div>
+               <div className="text-[12px] font-medium text-[#d4dae8]" style={MONO}>{preset.default_splits}</div>
+             </div>
+           </div>
+           
+           {isLoading ? (
+             <div className="flex items-center justify-center p-10"><Loader2 className="animate-spin text-[#525c70]" /></div>
+           ) : preview ? (
+             <div className="space-y-4">
+               <div>
+                 <div className="text-[9px] uppercase tracking-widest text-[#525c70] mb-2" style={MONO}>Schema Preview</div>
+                 <div className="border border-border">
+                   <table className="w-full text-left border-collapse">
+                     <thead>
+                       <tr className="bg-[#07090f] border-b border-border">
+                         <th className="px-3 py-2 text-[9px] uppercase text-[#525c70] tracking-widest font-normal" style={MONO}>Column</th>
+                         <th className="px-3 py-2 text-[9px] uppercase text-[#525c70] tracking-widest font-normal" style={MONO}>Type</th>
+                         <th className="px-3 py-2 text-[9px] uppercase text-[#525c70] tracking-widest font-normal" style={MONO}>Non-Null</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-border">
+                       {preview.schema.map((c: any) => (
+                         <tr key={c.column} className="bg-card hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                           <td className="px-3 py-2.5 text-[11px] text-[#d4dae8]" style={MONO}>{c.column}</td>
+                           <td className="px-3 py-2.5 text-[11px] text-[#8891a8]" style={MONO}>{c.dtype}</td>
+                           <td className="px-3 py-2.5 text-[11px] text-[#8891a8]" style={MONO}>{fmtCount(c.nonNull)}</td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+               
+               {preview.classDistribution.length > 0 && (
+                 <div>
+                   <div className="text-[9px] uppercase tracking-widest text-[#525c70] mb-2" style={MONO}>Class Distribution</div>
+                   <div className="flex flex-wrap gap-2">
+                     {preview.classDistribution.map((c: any) => (
+                       <div key={c.name} className="px-2 py-1 border border-[rgba(255,255,255,0.05)] bg-[#07090f] flex items-center gap-2">
+                         <span className="text-[10px] text-[#d4dae8]" style={MONO}>{c.name}</span>
+                         <span className="text-[9px] text-[#525c70]" style={MONO}>{fmtCount(c.count)}</span>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+             </div>
+           ) : null}
+        </div>
+        
+        <div className="p-4 border-t border-border flex justify-end">
+          <button
+            onClick={() => onImport(preset.key)}
+            className="px-6 py-2 text-[10px] uppercase tracking-widest font-medium transition-colors border text-black bg-[#00d4a0] border-[#00d4a0] hover:bg-[#00e6ae]"
+            style={MONO}>
+            Import to Project
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PresetsHubView() {
+  const { data: presets = [], isLoading } = useQuery({
+    queryKey: ["presets"],
+    queryFn: async () => {
+      const res = await fetch("http://127.0.0.1:8000/api/datasets/presets");
+      if (!res.ok) throw new Error("Failed to fetch presets");
+      return res.json() as Promise<PresetCatalog[]>;
+    }
+  });
+  
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<DatasetCategory | null>(null);
+  const [previewModal, setPreviewModal] = useState<PresetCatalog | null>(null);
+  const queryClient = useQueryClient();
+  
+  const filtered = useMemo(() => {
+    return presets.filter(p => {
+      if (categoryFilter && p.category !== categoryFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return p.name.toLowerCase().includes(q) || p.provider.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [presets, search, categoryFilter]);
+  
+  const handleImport = async (key: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/datasets/presets/${key}/import`, { method: "POST" });
+      if (!res.ok) throw new Error("Import failed");
+      alert("Import started in background! Check your library in a few seconds.");
+      setPreviewModal(null);
+      // Wait a bit and invalidate datasets query to show newly imported
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      }, 3000);
+    } catch(e) {
+      alert("Failed to start import");
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 relative p-6 bg-[#0a0d14]">
+       <div className="flex items-center justify-between mb-6">
+         <div className="flex items-center gap-2 bg-card border border-border px-3 py-2 w-72">
+           <Search size={12} className="text-[#525c70] shrink-0" />
+           <input
+             value={search} onChange={e => setSearch(e.target.value)}
+             placeholder="Search presets…"
+             className="bg-transparent outline-none text-[12px] text-[#d4dae8] placeholder-[#525c70] w-full"
+             style={MONO}
+           />
+         </div>
+         <div className="flex gap-1 bg-background border border-border p-1 rounded-sm">
+           <button
+             onClick={() => setCategoryFilter(null)}
+             className={`px-3 py-1.5 text-[10px] uppercase tracking-widest transition-colors ${!categoryFilter ? "bg-[rgba(255,255,255,0.05)] text-[#d4dae8]" : "text-[#525c70] hover:text-[#8891a8]"}`}
+             style={MONO}
+           >All</button>
+           {ALL_CATEGORIES.map(cat => (
+             <button
+               key={cat}
+               onClick={() => setCategoryFilter(cat)}
+               className={`px-3 py-1.5 text-[10px] uppercase tracking-widest transition-colors ${categoryFilter === cat ? "bg-[rgba(255,255,255,0.05)] text-[#d4dae8]" : "text-[#525c70] hover:text-[#8891a8]"}`}
+               style={MONO}
+             >{cat}</button>
+           ))}
+         </div>
+       </div>
+       
+       <div className="flex-1 overflow-y-auto min-h-0 grid grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
+         {filtered.map(p => {
+           const fc = CATEGORY_COLORS[getCategoryKey(p.category)] || { text: "#fff", bg: "transparent", border: "transparent" };
+           return (
+             <div key={p.key} className="bg-card border border-border hover:border-[rgba(255,255,255,0.15)] transition-colors p-4 flex flex-col cursor-pointer" onClick={() => setPreviewModal(p)}>
+               <div className="flex items-start justify-between mb-3">
+                 <span className="text-[8px] uppercase tracking-widest px-1.5 py-0.5 border" style={{ color: fc.text, borderColor: fc.border, backgroundColor: fc.bg, ...MONO }}>{p.category}</span>
+                 <span className="text-[10px] text-[#525c70]" style={MONO}>{p.provider}</span>
+               </div>
+               <div className="text-sm font-semibold text-[#d4dae8] mb-1.5" style={MONO}>{p.name}</div>
+               <p className="text-[11px] text-[#8891a8] line-clamp-2 mb-4 font-sans leading-relaxed flex-1">{p.description}</p>
+               
+               <div className="flex items-center justify-between pt-3 border-t border-[rgba(255,255,255,0.05)] mt-auto">
+                 <div className="text-[10px] text-[#525c70]" style={MONO}>{p.estimated_size}</div>
+                 <div className="text-[10px] text-[#525c70]" style={MONO}>{p.class_count} classes</div>
+               </div>
+             </div>
+           );
+         })}
+       </div>
+       
+       {previewModal && <PresetPreviewModal preset={previewModal} onClose={() => setPreviewModal(null)} onImport={handleImport} />}
+    </div>
+  );
+}
+
+function UploadsHubView({ onImport }: { onImport: () => void }) {
+  const { data: sharedUploads = [], refetch } = useQuery({
+    queryKey: ["sharedUploads"],
+    queryFn: async () => {
+      const res = await fetch("http://127.0.0.1:8000/api/datasets/uploads/hub");
+      if (!res.ok) throw new Error("Failed to fetch shared uploads");
+      return res.json() as Promise<any[]>;
+    }
+  });
+
+  const queryClient = useQueryClient();
+
+  const handleImport = async (storageKey: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/datasets/uploads/hub/${storageKey}/import`, { method: "POST" });
+      if (!res.ok) throw new Error("Import failed");
+      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      onImport();
+    } catch (e) {
+      alert("Failed to import shared dataset");
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col p-6 max-w-[1200px] mx-auto w-full h-full overflow-y-auto">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-[#d4dae8] mb-2" style={MONO}>Uploads Hub</h2>
+        <p className="text-[12px] text-[#8891a8]" style={MONO}>Upload new datasets via the sidebar dropzone in My Library, or import datasets uploaded by other projects across the workspace.</p>
+      </div>
+      
+      <div className="grid grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
+        {sharedUploads.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-[#525c70]" style={MONO}>No shared uploads available yet. Upload a CSV to get started!</div>
+        ) : sharedUploads.map(p => (
+          <div key={p.storage_key} className="bg-card border border-border hover:border-[rgba(255,255,255,0.15)] transition-colors p-4 flex flex-col">
+            <div className="flex items-start justify-between mb-3">
+              <span className="text-[8px] uppercase tracking-widest px-1.5 py-0.5 border text-[#3ba6ff] border-[#3ba6ff]/40 bg-[rgba(59,166,255,0.06)]" style={MONO}>{p.category}</span>
+              <span className="text-[10px] text-[#525c70]" style={MONO}>CSV Upload</span>
+            </div>
+            <div className="text-sm font-semibold text-[#d4dae8] mb-1.5" style={MONO}>{p.name}</div>
+            <p className="text-[11px] text-[#8891a8] line-clamp-2 mb-4 font-sans leading-relaxed flex-1">{p.description}</p>
+            
+            <div className="flex items-center justify-between pt-3 border-t border-[rgba(255,255,255,0.05)] mt-auto mb-4">
+              <div className="text-[10px] text-[#525c70]" style={MONO}>{p.disk_size}</div>
+              <div className="text-[10px] text-[#525c70]" style={MONO}>{p.class_count > 0 ? `${p.class_count} classes` : "Raw Data"}</div>
+            </div>
+            <button 
+              onClick={() => handleImport(p.storage_key)}
+              className="w-full py-1.5 text-[10px] uppercase tracking-widest font-medium transition-colors border text-black bg-[#00d4a0] border-[#00d4a0] hover:bg-[#00e6ae]"
+              style={MONO}>
+              Import to Project
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function DatasetsView() {
+  const [navTab, setNavTab] = useState<"library" | "presets" | "uploadsHub">("library");
+
   const { data: fetchedDatasets = [], isLoading: isDatasetsLoading } = useQuery({
     queryKey: ["datasets"],
     queryFn: async () => {
@@ -2184,7 +2511,7 @@ function DatasetsView() {
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<DatasetCategory | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>("imagenet");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<"overview" | "schema" | "samples">("overview");
   const [samplePage, setSamplePage] = useState(0);
   const [uploads, setUploads] = useState<UploadFile[]>([]);
@@ -2345,6 +2672,23 @@ function DatasetsView() {
               <div className="flex items-center gap-2 mb-1">
                 <Database size={14} className="text-[#00d4a0]" strokeWidth={1.5} />
                 <h1 className="text-sm font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Datasets</h1>
+                <div className="flex bg-[#0a0d14] border border-[rgba(255,255,255,0.05)] p-0.5 rounded-sm ml-4">
+                  <button
+                    onClick={() => setNavTab("library")}
+                    className={`px-3 py-1 text-[10px] uppercase tracking-widest transition-colors ${navTab === "library" ? "bg-[rgba(255,255,255,0.1)] text-[#d4dae8]" : "text-[#525c70] hover:text-[#8891a8]"}`}
+                    style={MONO}
+                  >My Library</button>
+                  <button
+                    onClick={() => setNavTab("presets")}
+                    className={`px-3 py-1 text-[10px] uppercase tracking-widest transition-colors ${navTab === "presets" ? "bg-[rgba(255,255,255,0.1)] text-[#d4dae8]" : "text-[#525c70] hover:text-[#8891a8]"}`}
+                    style={MONO}
+                  >Presets Hub</button>
+                  <button
+                    onClick={() => setNavTab("uploadsHub")}
+                    className={`px-3 py-1 text-[10px] uppercase tracking-widest transition-colors ${navTab === "uploadsHub" ? "bg-[rgba(255,255,255,0.1)] text-[#d4dae8]" : "text-[#525c70] hover:text-[#8891a8]"}`}
+                    style={MONO}
+                  >Uploads Hub</button>
+                </div>
               </div>
               <p className="text-[11px] text-[#525c70]" style={MONO}>
                 {fetchedDatasets.length} available · {uploads.filter(u => u.status === "valid").length} uploaded · {uploads.filter(u => u.status === "uploading").length} in progress
@@ -2388,7 +2732,12 @@ function DatasetsView() {
         </div>
       </div>
 
-      {/* 3-column body */}
+      {/* Body */}
+      {navTab === "presets" ? (
+        <PresetsHubView />
+      ) : navTab === "uploadsHub" ? (
+        <UploadsHubView onImport={() => setNavTab("library")} />
+      ) : (
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* ── Left: Dataset Library ── */}
@@ -2412,8 +2761,8 @@ function DatasetsView() {
             <button
               onClick={() => setCategoryFilter(null)}
               className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${!categoryFilter
-                  ? "border-[#00d4a0]/40 text-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
-                  : "border-border text-[#525c70] hover:text-[#8891a8]"
+                ? "border-[#00d4a0]/40 text-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                : "border-border text-[#525c70] hover:text-[#8891a8]"
                 }`}
               style={MONO}
             >All</button>
@@ -2422,10 +2771,10 @@ function DatasetsView() {
                 key={cat}
                 onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
                 className={`px-2 py-0.5 text-[9px] uppercase tracking-widest border transition-colors ${categoryFilter === cat
-                    ? `border-[${CATEGORY_COLORS[cat]}]/40 text-[${CATEGORY_COLORS[cat]}] bg-[rgba(0,212,160,0.06)]`
-                    : "border-border text-[#525c70] hover:text-[#8891a8]"
+                  ? `border-[${CATEGORY_COLORS[getCategoryKey(cat)]}]/40 text-[${CATEGORY_COLORS[getCategoryKey(cat)]}] bg-[rgba(0,212,160,0.06)]`
+                  : "border-border text-[#525c70] hover:text-[#8891a8]"
                   }`}
-                style={{ ...(categoryFilter === cat ? { color: CATEGORY_COLORS[cat], borderColor: CATEGORY_COLORS[cat] + "66", backgroundColor: CATEGORY_COLORS[cat] + "0f" } : {}), ...MONO }}
+                style={{ ...(categoryFilter === cat ? { color: CATEGORY_COLORS[getCategoryKey(cat)], borderColor: CATEGORY_COLORS[getCategoryKey(cat)] + "66", backgroundColor: CATEGORY_COLORS[getCategoryKey(cat)] + "0f" } : {}), ...MONO }}
               >{cat}</button>
             ))}
           </div>
@@ -2440,18 +2789,19 @@ function DatasetsView() {
             ) : (
               filtered.map(ds => {
                 const isActive = selectedId === ds.id;
-                const CatIcon = CATEGORY_ICONS[ds.category];
+                const catKey = getCategoryKey(ds.category);
+                const CatIcon = CATEGORY_ICONS[catKey];
                 return (
                   <button
                     key={ds.id}
                     onClick={() => { setSelectedId(ds.id); setPreviewTab("overview"); setSamplePage(0); }}
                     className={`w-full text-left px-3 py-2.5 border-l-2 transition-all ${isActive
-                        ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
-                        : "border-transparent hover:bg-[rgba(255,255,255,0.02)]"
+                      ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                      : "border-transparent hover:bg-[rgba(255,255,255,0.02)]"
                       }`}
                   >
                     <div className="flex items-center gap-2 mb-0.5">
-                      <CatIcon size={11} style={{ color: CATEGORY_COLORS[ds.category] }} strokeWidth={1.5} />
+                      <CatIcon size={11} style={{ color: CATEGORY_COLORS[catKey] }} strokeWidth={1.5} />
                       <span className={`text-[11px] font-medium truncate ${isActive ? "text-[#d4dae8]" : "text-[#8891a8]"}`} style={MONO}>{ds.name}</span>
                     </div>
                     <div className="flex items-center gap-2 ml-[19px]">
@@ -2480,8 +2830,8 @@ function DatasetsView() {
               {/* Preview header */}
               <div className="shrink-0 border-b border-border px-5 pt-4 pb-3 bg-card">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-7 h-7 flex items-center justify-center border border-border" style={{ backgroundColor: CATEGORY_COLORS[selected.category] + "12" }}>
-                    {(() => { const CI = CATEGORY_ICONS[selected.category]; return <CI size={14} style={{ color: CATEGORY_COLORS[selected.category] }} />; })()}
+                  <div className="w-7 h-7 flex items-center justify-center border border-border" style={{ backgroundColor: CATEGORY_COLORS[getCategoryKey(selected.category)] + "12" }}>
+                    {(() => { const CI = CATEGORY_ICONS[getCategoryKey(selected.category)]; return <CI size={14} style={{ color: CATEGORY_COLORS[getCategoryKey(selected.category)] }} />; })()}
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-[#d4dae8]" style={MONO}>{selected.name}</h2>
@@ -2509,8 +2859,8 @@ function DatasetsView() {
                     key={tab}
                     onClick={() => { setPreviewTab(tab); setSamplePage(0); }}
                     className={`px-4 py-2.5 text-[10px] uppercase tracking-widest border-b-2 transition-colors ${previewTab === tab
-                        ? "border-[#00d4a0] text-[#00d4a0]"
-                        : "border-transparent text-[#525c70] hover:text-[#8891a8]"
+                      ? "border-[#00d4a0] text-[#00d4a0]"
+                      : "border-transparent text-[#525c70] hover:text-[#8891a8]"
                       }`}
                     style={MONO}
                   >{tab}</button>
@@ -2662,8 +3012,8 @@ function DatasetsView() {
           <div className="p-3">
             <div
               className={`border-2 border-dashed rounded-sm p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${dragOver
-                  ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
-                  : "border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.01)]"
+                ? "border-[#00d4a0] bg-[rgba(0,212,160,0.06)]"
+                : "border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.01)]"
                 }`}
               onDragOver={e => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
@@ -2762,14 +3112,197 @@ function DatasetsView() {
           </div>
         </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── Projects View ────────────────────────────────────────────────────────────
+
+function ProjectsView() {
+  const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newProjName, setNewProjName] = useState("");
+  const [newProjDesc, setNewProjDesc] = useState("");
+  const { activeProjectId, setActiveProjectId } = useProjectContext();
+
+  const queryClient = useQueryClient();
+  const createMutation = useMutation({
+    mutationFn: async (newProject: { name: string; description: string }) => {
+      const res = await fetch(`${API_BASE}/projects/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProject),
+      });
+      if (!res.ok) throw new Error("Failed to create project");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setIsCreateOpen(false);
+      setNewProjName("");
+      setNewProjDesc("");
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (projectId: string) => {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/archive`, {
+        method: "POST"
+      });
+      if (!res.ok) throw new Error("Failed to archive project");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
+  const { data: projects = [], isLoading } = useProjects();
+
+  const filtered = projects.filter(p => {
+    if (!showArchived && p.is_archived) return false;
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.description.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div className="flex-1 min-w-0 flex flex-col h-full bg-background overflow-hidden">
+      <div className="shrink-0 border-b border-border">
+        <div className="max-w-[1600px] mx-auto px-6 pt-6 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Folder size={14} className="text-[#00d4a0]" strokeWidth={1.5} />
+                <h1 className="text-sm font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Projects</h1>
+              </div>
+              <p className="text-[11px] text-[#525c70]" style={MONO}>
+                {projects.length} total projects · {projects.filter(p => !p.is_archived).length} active
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest bg-[#00d4a0] text-[#07090f] font-semibold hover:bg-[#00e6ae] transition-colors" style={MONO}>
+                <Plus size={12} strokeWidth={2.5} /> New Project
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="shrink-0 border-b border-border bg-[#0a0d14]">
+        <div className="max-w-[1600px] mx-auto flex items-center gap-3 px-6 py-3">
+          <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 flex-1 max-w-xs">
+            <Search size={11} className="text-[#525c70] shrink-0" />
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search projects..."
+              className="bg-transparent outline-none text-[11px] text-[#d4dae8] placeholder-[#525c70] w-full"
+              style={MONO}
+            />
+          </div>
+          <div className="flex-1" />
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#525c70] cursor-pointer" style={MONO}>
+            <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="accent-[#00d4a0]" />
+            Show Archived
+          </label>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-[1600px] mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map(p => {
+            const isActive = p.id === activeProjectId;
+            return (
+            <div 
+              key={p.id} 
+              onClick={() => setActiveProjectId(p.id)}
+              className={`bg-card p-5 flex flex-col group transition-colors relative cursor-pointer ${
+                isActive ? "border border-[#00d4a0] ring-1 ring-[#00d4a0]" : "border border-border hover:border-[#00d4a0]/40"
+              }`}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[13px] font-semibold text-[#d4dae8]" style={MONO}>{p.name}</h3>
+                  {p.is_archived === 1 && (
+                    <span className="px-1.5 py-0.5 text-[8px] bg-[rgba(240,64,64,0.1)] text-[#f04040] border border-[#f04040]/30 uppercase tracking-widest" style={MONO}>Archived</span>
+                  )}
+                </div>
+                {!p.is_archived && (
+                  <button 
+                    onClick={() => archiveMutation.mutate(p.id)}
+                    disabled={archiveMutation.isPending}
+                    title="Archive Project"
+                    className="text-[#525c70] hover:text-[#f04040] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                  >
+                    <Archive size={14} />
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-[#8891a8] mb-6 flex-1">{p.description}</p>
+              <div className="flex justify-between items-end border-t border-[rgba(255,255,255,0.04)] pt-3">
+                <div className="text-[9px] text-[#525c70] uppercase tracking-widest" style={MONO}>
+                  ID: {p.id}
+                </div>
+                <div className="text-[9px] text-[#525c70] uppercase tracking-widest" style={MONO}>
+                  {new Date(p.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+          )})}
+        </div>
+      </div>
+
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border w-[400px] shadow-2xl flex flex-col">
+            <div className="p-4 border-b border-border flex justify-between items-center">
+              <h2 className="text-[11px] font-semibold text-[#d4dae8] uppercase tracking-widest" style={MONO}>Create Project</h2>
+              <button onClick={() => setIsCreateOpen(false)} className="text-[#525c70] hover:text-[#d4dae8]"><X size={14} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[9px] uppercase tracking-widest text-[#525c70] mb-1.5" style={MONO}>Project Name</label>
+                <input value={newProjName} onChange={e => setNewProjName(e.target.value)} className={`w-full bg-[#0a0d14] border ${newProjName.length > 50 ? 'border-[#f04040] focus:border-[#f04040]' : 'border-border focus:border-[#00d4a0]'} px-3 py-2 text-[11px] text-[#d4dae8] outline-none transition-colors`} style={MONO} placeholder="e.g. Next-Gen Vision" />
+                <div className="flex justify-between items-start mt-1">
+                  {newProjName.length > 50 ? <span className="text-[#f04040] text-[9px]" style={MONO}>Name exceeds 50 characters</span> : <span />}
+                  <span className={`text-[9px] ${newProjName.length > 50 ? 'text-[#f04040]' : 'text-[#525c70]'}`} style={MONO}>{newProjName.length}/50</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase tracking-widest text-[#525c70] mb-1.5" style={MONO}>Description</label>
+                <textarea value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} className={`w-full bg-[#0a0d14] border ${newProjDesc.length > 250 ? 'border-[#f04040] focus:border-[#f04040]' : 'border-border focus:border-[#00d4a0]'} px-3 py-2 text-[11px] text-[#d4dae8] outline-none transition-colors resize-none h-20`} style={MONO} placeholder="Briefly describe the goals of this project..." />
+                <div className="flex justify-between items-start mt-1">
+                  {newProjDesc.length > 250 ? <span className="text-[#f04040] text-[9px]" style={MONO}>Description exceeds 250 characters</span> : <span />}
+                  <span className={`text-[9px] ${newProjDesc.length > 250 ? 'text-[#f04040]' : 'text-[#525c70]'}`} style={MONO}>{newProjDesc.length}/250</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-border flex justify-end gap-2 bg-[#0a0d14]">
+              <button onClick={() => setIsCreateOpen(false)} className="px-4 py-1.5 text-[10px] uppercase tracking-widest border border-border text-[#d4dae8] hover:bg-[rgba(255,255,255,0.05)] transition-colors" style={MONO}>Cancel</button>
+              <button 
+                onClick={() => createMutation.mutate({ name: newProjName, description: newProjDesc })}
+                disabled={createMutation.isPending || !newProjName || newProjName.length > 50 || newProjDesc.length > 250}
+                className="px-4 py-1.5 text-[10px] uppercase tracking-widest bg-[#00d4a0] text-[#07090f] font-semibold hover:bg-[#00e6ae] transition-colors disabled:opacity-50" 
+                style={MONO}
+              >
+                {createMutation.isPending ? "Creating..." : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
+
 const NAV_ITEMS = [
   { id: "dashboard", icon: BarChart2, label: "Dashboard" },
+  { id: "projects", icon: Folder, label: "Projects" },
   { id: "experiments", icon: FlaskConical, label: "Experiments" },
   { id: "models", icon: Layers, label: "Models" },
   { id: "hardware", icon: Server, label: "Hardware" },
@@ -2779,7 +3312,32 @@ const NAV_ITEMS = [
 ];
 
 export default function App() {
-  const [activeNav, setActiveNav] = useState("datasets");
+  const [activeNav, setActiveNav] = useState("projects");
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  const { data: projects = [] } = useProjects();
+  const activeProject = projects.find(p => p.id === activeProjectId);
+
+  // Auto-set initial active project
+  useEffect(() => {
+    if (!activeProjectId && projects.length > 0) {
+      setActiveProjectId(projects[0].id);
+    }
+  }, [projects, activeProjectId]);
+
+  const fetchApi = useCallback(async (endpoint: string, options?: RequestInit) => {
+    const headers = new Headers(options?.headers);
+    if (activeProjectId) {
+      headers.set("X-Project-ID", activeProjectId);
+    }
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+    if (!res.ok) throw new Error("API error");
+    return res.json();
+  }, [activeProjectId]);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
   const [metrics, setMetrics] = useState<MetricPoint[]>(() => generateMetrics(47));
   const [hw, setHw] = useState<HardwarePoint[]>(() => generateHardware(60));
@@ -2836,85 +3394,90 @@ export default function App() {
   const latest = metrics[metrics.length - 1];
 
   return (
-    <div className="size-full flex flex-col bg-background text-foreground overflow-hidden" style={{ fontFamily: "Inter, sans-serif" }}>
-      {/* ── Top Bar ── */}
-      <header className="h-11 shrink-0 border-b border-border flex items-center px-4 bg-[#0a0d14]">
-        <div className="flex items-center gap-2 mr-8">
-          <div className="w-4 h-4 bg-[#00d4a0] flex items-center justify-center">
-            <Zap size={10} className="text-[#07090f]" />
+    <ProjectContext.Provider value={{ activeProjectId, setActiveProjectId, fetchApi }}>
+      <div className="size-full flex flex-col bg-background text-foreground overflow-hidden" style={{ fontFamily: "Inter, sans-serif" }}>
+        {/* ── Top Bar ── */}
+        <header className="h-11 shrink-0 border-b border-border flex items-center px-4 bg-[#0a0d14]">
+          <div className="flex items-center gap-2 mr-8">
+            <div className="w-4 h-4 bg-[#00d4a0] flex items-center justify-center">
+              <Zap size={10} className="text-[#07090f]" />
+            </div>
+            <span className="text-[11px] font-semibold text-[#d4dae8] tracking-widest uppercase" style={MONO}>TRAINCTL</span>
           </div>
-          <span className="text-[11px] font-semibold text-[#d4dae8] tracking-widest uppercase" style={MONO}>TRAINCTL</span>
-        </div>
-        <div className="flex items-center gap-1 mr-6">
-          <button onClick={() => setIsRunning(r => !r)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border transition-colors ${isRunning ? "border-[rgba(0,212,160,0.4)] text-[#00d4a0] hover:bg-[rgba(0,212,160,0.08)]" : "border-[rgba(245,166,35,0.4)] text-[#f5a623] hover:bg-[rgba(245,166,35,0.08)]"}`}
-            style={MONO}>
-            {isRunning ? <Pause size={10} /> : <Play size={10} />}
-            {isRunning ? "Pause" : "Resume"}
-          </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-[rgba(240,64,64,0.4)] text-[#f04040] hover:bg-[rgba(240,64,64,0.08)] transition-colors" style={MONO}>
-            <Square size={10} /> Stop
-          </button>
-        </div>
-        <div className="flex items-center gap-5 flex-1">
-          <StatBadge label="RUN" value="efficientnet-b4-aug" />
-          <StatBadge label="EPOCH" value={`${epoch}/100`} />
-          <StatBadge label="VAL LOSS" value={latest?.valLoss.toFixed(4) ?? "—"} color="#7c6cf8" />
-          <StatBadge label="VAL ACC" value={latest ? (latest.valAcc * 100).toFixed(2) + "%" : "—"} color="#f5a623" />
-        </div>
-        <div className="flex items-center gap-4 ml-4">
-          <div className="flex items-center gap-1.5 text-[10px]" style={MONO}>
-            <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-[#00d4a0] animate-pulse" : "bg-[#525c70]"}`} />
-            <span style={{ color: isRunning ? "#00d4a0" : "#525c70" }}>{isRunning ? "TRAINING" : "PAUSED"}</span>
+          <div className="flex items-center gap-1 mr-6">
+            <button onClick={() => setIsRunning(r => !r)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border transition-colors ${isRunning ? "border-[rgba(0,212,160,0.4)] text-[#00d4a0] hover:bg-[rgba(0,212,160,0.08)]" : "border-[rgba(245,166,35,0.4)] text-[#f5a623] hover:bg-[rgba(245,166,35,0.08)]"}`}
+              style={MONO}>
+              {isRunning ? <Pause size={10} /> : <Play size={10} />}
+              {isRunning ? "Pause" : "Resume"}
+            </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest border border-[rgba(240,64,64,0.4)] text-[#f04040] hover:bg-[rgba(240,64,64,0.08)] transition-colors" style={MONO}>
+              <Square size={10} /> Stop
+            </button>
           </div>
-          <div className="flex items-center gap-1.5 text-[#525c70] text-[10px]" style={MONO}>
-            <Clock size={10} /><span>02:14:33</span>
+          <div className="flex items-center gap-5 flex-1">
+            <StatBadge label="PROJECT" value={activeProject?.name ?? "—"} />
+            <StatBadge label="RUN" value="efficientnet-b4-aug" />
+            <StatBadge label="EPOCH" value={`${epoch}/100`} />
+            <StatBadge label="VAL LOSS" value={latest?.valLoss.toFixed(4) ?? "—"} color="#7c6cf8" />
+            <StatBadge label="VAL ACC" value={latest ? (latest.valAcc * 100).toFixed(2) + "%" : "—"} color="#f5a623" />
           </div>
-        </div>
-      </header>
+          <div className="flex items-center gap-4 ml-4">
+            <div className="flex items-center gap-1.5 text-[10px]" style={MONO}>
+              <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-[#00d4a0] animate-pulse" : "bg-[#525c70]"}`} />
+              <span style={{ color: isRunning ? "#00d4a0" : "#525c70" }}>{isRunning ? "TRAINING" : "PAUSED"}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[#525c70] text-[10px]" style={MONO}>
+              <Clock size={10} /><span>02:14:33</span>
+            </div>
+          </div>
+        </header>
 
-      {/* ── Body ── */}
-      <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className="w-44 shrink-0 bg-[#0a0d14] border-r border-border flex flex-col">
-          <nav className="flex-1 py-4 space-y-0.5">
-            {NAV_ITEMS.map(item => (
-              <NavItem key={item.id} icon={item.icon} label={item.label}
-                active={activeNav === item.id} onClick={() => setActiveNav(item.id)} />
-            ))}
-          </nav>
-          <div className="border-t border-border p-4 space-y-3">
-            <div className="text-[9px] uppercase tracking-widest text-[#525c70]" style={MONO}>GPU · A100</div>
-            <UtilBar label="" value={hw[hw.length - 1]?.gpu ?? 85} color="#7c6cf8" />
-            <div className="text-[10px] text-[#525c70]" style={MONO}>{(hw[hw.length - 1]?.vram ?? 88).toFixed(0)}% VRAM</div>
-          </div>
-        </aside>
+        {/* ── Body ── */}
+        <div className="flex flex-1 min-h-0">
+          {/* Sidebar */}
+          <aside className="w-44 shrink-0 bg-[#0a0d14] border-r border-border flex flex-col">
+            <nav className="flex-1 py-4 space-y-0.5">
+              {NAV_ITEMS.map(item => (
+                <NavItem key={item.id} icon={item.icon} label={item.label}
+                  active={activeNav === item.id} onClick={() => setActiveNav(item.id)} />
+              ))}
+            </nav>
+            <div className="border-t border-border p-4 space-y-3">
+              <div className="text-[9px] uppercase tracking-widest text-[#525c70]" style={MONO}>GPU · A100</div>
+              <UtilBar label="" value={hw[hw.length - 1]?.gpu ?? 85} color="#7c6cf8" />
+              <div className="text-[10px] text-[#525c70]" style={MONO}>{(hw[hw.length - 1]?.vram ?? 88).toFixed(0)}% VRAM</div>
+            </div>
+          </aside>
 
-        {/* Main */}
-        {activeNav === "experiments" ? (
-          <ExperimentsView />
-        ) : activeNav === "models" ? (
-          <ModelsView />
-        ) : activeNav === "hardware" ? (
-          <HardwareView liveHw={hw} />
-        ) : activeNav === "datasets" ? (
-          <DatasetsView />
-        ) : (
-          <DashboardView
-            metrics={metrics} hw={hw} termLines={termLines}
-            isRunning={isRunning} epoch={epoch}
-            params={params} setParams={setParams}
-            termOpen={termOpen} setTermOpen={setTermOpen}
-          />
-        )}
-      </div>
+          {/* Main */}
+          {activeNav === "projects" ? (
+            <ProjectsView />
+          ) : activeNav === "experiments" ? (
+            <ExperimentsView />
+          ) : activeNav === "models" ? (
+            <ModelsView />
+          ) : activeNav === "hardware" ? (
+            <HardwareView liveHw={hw} />
+          ) : activeNav === "datasets" ? (
+            <DatasetsView />
+          ) : (
+            <DashboardView
+              metrics={metrics} hw={hw} termLines={termLines}
+              isRunning={isRunning} epoch={epoch}
+              params={params} setParams={setParams}
+              termOpen={termOpen} setTermOpen={setTermOpen}
+            />
+          )}
+        </div>
 
-      <style>{`
+        <style>{`
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
       `}</style>
-    </div>
+      </div>
+    </ProjectContext.Provider>
   );
 }

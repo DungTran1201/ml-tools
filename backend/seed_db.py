@@ -16,7 +16,7 @@ from app.models import (
     TrainingRun, RunMetric, RunLog, HyperparameterConfig,
     HardwareConfig, HardwareMetric, Checkpoint, RunTag,
     Dataset, DatasetSplit, DatasetColumn, ClassDistribution, DatasetUpload,
-    Model, ModelTag, UserModelStar
+    Model, ModelTag, UserModelStar, PresetCatalog
 )
 
 def init_db():
@@ -114,6 +114,32 @@ def seed_db():
             created_at=datetime.datetime.now().isoformat()
         )
         db.add(mock_hw)
+        db.flush()
+
+        # Create mock PresetCatalogs
+        mock_preset_1 = PresetCatalog(
+            key="iris",
+            name="Iris Dataset",
+            category="TABULAR",
+            provider="sklearn",
+            description="Famous dataset for classification.",
+            default_splits="train",
+            class_count=3,
+            estimated_size="10 KB"
+        )
+        db.add(mock_preset_1)
+        
+        mock_preset_2 = PresetCatalog(
+            key="mnist",
+            name="MNIST Digits",
+            category="IMAGE",
+            provider="torchvision",
+            description="Handwritten digits.",
+            default_splits="train,test",
+            class_count=10,
+            estimated_size="50 MB"
+        )
+        db.add(mock_preset_2)
         db.flush()
 
         db.commit()

@@ -1,6 +1,16 @@
 import sqlite3
 conn = sqlite3.connect(r"C:\Users\PC\Desktop\ml-tools\database\app.db")
-conn.executescript(open(r"C:\Users\PC\Desktop\ml-tools\database\schema.sql", encoding="utf-8").read())
+conn.execute("""CREATE TABLE preset_catalog (
+    key VARCHAR NOT NULL, 
+    name VARCHAR NOT NULL, 
+    category VARCHAR NOT NULL, 
+    provider VARCHAR NOT NULL, 
+    description VARCHAR, 
+    default_splits VARCHAR, 
+    class_count INTEGER, 
+    estimated_size VARCHAR, 
+    PRIMARY KEY (key)
+);""")
 tables = conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
 ).fetchall()

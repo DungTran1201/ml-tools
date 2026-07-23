@@ -1,5 +1,18 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
+
+class PresetCatalogSchema(BaseModel):
+    key: str
+    name: str
+    category: str
+    provider: str
+    description: Optional[str] = None
+    default_splits: Optional[str] = None
+    class_count: Optional[int] = None
+    estimated_size: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ClassDistributionSchema(BaseModel):
     name: str = Field(validation_alias="class_name", serialization_alias="name")
@@ -16,6 +29,14 @@ class ColumnSchema(BaseModel):
     max: Optional[str] = Field(None, validation_alias="stat_max", serialization_alias="max")
     
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+class PresetPreviewSchema(BaseModel):
+    preset: PresetCatalogSchema
+    schema_fields: List[ColumnSchema] = Field(
+        default_factory=list,
+        serialization_alias="schema"
+    )
+    classDistribution: List[ClassDistributionSchema] = Field(default_factory=list)
 
 class PreloadedDataset(BaseModel):
     id: str

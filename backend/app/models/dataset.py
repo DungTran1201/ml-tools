@@ -2,6 +2,16 @@ from sqlalchemy import Column, String, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
+class PresetCatalog(Base):
+    __tablename__ = "preset_catalog"
+    key = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    provider = Column(String, nullable=False)
+    description = Column(String)
+    default_splits = Column(String)  # Comma-separated like 'train,test'
+    class_count = Column(Integer)
+    estimated_size = Column(String)
 class Dataset(Base):
     __tablename__ = "dataset"
     id = Column(String, primary_key=True)
